@@ -17,6 +17,7 @@ import {
   isTerminal,
 } from './state-machine.js';
 import type { RunPaths } from './run-manager.js';
+import type { ProgressReporter } from '../ui/progress-reporter.js';
 
 export interface WorkflowEngineOptions {
   config: HarnessConfig;
@@ -26,6 +27,8 @@ export interface WorkflowEngineOptions {
   task: string;
   /** If true, auto-approve plan (skips interactive prompt). Used in tests. */
   autoApprove?: boolean;
+  /** Optional live progress reporter — omit for silent/test mode. */
+  reporter?: ProgressReporter;
 }
 
 const STAGE_ORDER: Stage[] = ['planning', 'implementing', 'testing', 'reviewing'];
@@ -82,11 +85,14 @@ export class WorkflowEngine {
 
       if (config.workflow.plan_approval === 'required' && !this.opts.autoApprove) {
         this.logger.approvalRequest(runId, 'planning');
-        process.stdout.write(`\n  ✋ Plan requires approval.\n`);
         const plan = this.readArtifact(STAGE_TO_ARTIFACT['planning']);
-        const decision = await this.gate.requestApproval(
-          `Plan:\n${'─'.repeat(60)}\n${plan}\n${'─'.repeat(60)}`
-        );
+        if (this.opts.reporter) {
+          this.opts.reporter.approvalBanner(plan);
+        } else {
+          process.stdout.write(`\n  ✋ Plan requires approval.\n`);
+          process.stdout.write(`Plan:\n${'─'.repeat(60)}\n${plan}\n${'─'.repeat(60)}\n`);
+        }
+        const decision = await this.gate.requestApproval('');
         this.logger.approvalDecision(runId, decision, 'human');
 
         if (decision !== 'approved') {
@@ -115,6 +121,7 @@ export class WorkflowEngine {
             return state;
           }
           this.logger.retry(runId, 'implementing failed', attempt + 2);
+          this.opts.reporter?.retrying('implementing', attempt + 2);
           continue;
         }
         this.logger.stageComplete(runId, 'implementing', attempt + 1, implResult.summary);
@@ -136,6 +143,7 @@ export class WorkflowEngine {
             return state;
           }
           this.logger.retry(runId, 'testing failed — retrying implementing', attempt + 2);
+          this.opts.reporter?.retrying('testing', attempt + 2);
           state = this.store.transition('testing_failed', { actor: 'tester' });
           state = this.store.transition('implementing', { actor: 'system' });
           continue;
@@ -158,6 +166,7 @@ export class WorkflowEngine {
           return state;
         }
         this.logger.retry(runId, 'review rejected — retrying implementing', attempt + 2);
+        this.opts.reporter?.retrying('reviewing', attempt + 2);
         state = this.store.transition('review_rejected', { actor: 'reviewer' });
         state = this.store.transition('implementing', { actor: 'system' });
         continue;
@@ -181,7 +190,7 @@ export class WorkflowEngine {
     const next = this.store.transition(enterStatus, { actor: 'system' });
     this.logger.stateTransition(runId, state.status, enterStatus, 'system');
     this.logger.stageStart(runId, stage, next.attempt + 1);
-    process.stdout.write(`\n  → [${stage}] attempt ${next.attempt + 1}...\n`);
+    this.opts.reporter?.stageStarted(stage, next.attempt + 1);
     return next;
   }
 
@@ -198,6 +207,14 @@ export class WorkflowEngine {
 
     this.logger.log('agent_call_start', { run_id: state.run_id, stage, attempt: state.attempt + 1 });
 
+    // Attach live event callback when provider supports it (CodexProvider)
+    const reporter = this.opts.reporter;
+    if (reporter && 'setOnEvent' in provider && typeof (provider as Record<string, unknown>).setOnEvent === 'function') {
+      (provider as { setOnEvent: (cb: (e: unknown) => void) => void }).setOnEvent(
+        (e) => reporter.codexEvent(e as Parameters<typeof reporter.codexEvent>[0])
+      );
+    }
+
     const agentResult = await provider.execute({
       stage,
       runId: state.run_id,
@@ -208,6 +225,12 @@ export class WorkflowEngine {
     });
 
     this.logger.log('agent_call_complete', { run_id: state.run_id, stage, status: agentResult.status });
+
+    if (agentResult.status === 'success') {
+      reporter?.stageCompleted(stage);
+    } else {
+      reporter?.stageFailed(stage, agentResult.failureClassification ?? 'unknown');
+    }
 
     return {
       schema_version: '2.0',

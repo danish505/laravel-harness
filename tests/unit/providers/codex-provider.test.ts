@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { PassThrough } from 'stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodexProvider } from '../../../src/providers/codex-provider.js';
 import type { AgentRequest } from '../../../src/types.js';
@@ -22,39 +23,45 @@ function makeRequest(): AgentRequest {
   };
 }
 
-function createChildProcess(result: { exitCode: number | null; signal?: NodeJS.Signals | null; stdout?: string; stderr?: string }) {
-  let stdoutHandler: ((chunk: string) => void) | undefined;
-  let stderrHandler: ((chunk: string) => void) | undefined;
-  let closeHandler: ((exitCode: number | null, signal: NodeJS.Signals | null) => void) | undefined;
-  let errorHandler: ((error: Error) => void) | undefined;
+function createChildProcess(result: {
+  exitCode: number | null;
+  signal?: NodeJS.Signals | null;
+  stdout?: string;
+  stderr?: string;
+}) {
+  const stdoutStream = new PassThrough();
+  const stderrStream = new PassThrough();
+  const stdinStream = new PassThrough();
 
-  return {
-    stdout: {
-      on: vi.fn((event: string, handler: (chunk: string) => void) => {
-        if (event === 'data') stdoutHandler = handler;
-      }),
-    },
-    stderr: {
-      on: vi.fn((event: string, handler: (chunk: string) => void) => {
-        if (event === 'data') stderrHandler = handler;
-      }),
-    },
+  let closeHandler: ((code: number | null, signal: NodeJS.Signals | null) => void) | undefined;
+  let errorHandler: ((err: Error) => void) | undefined;
+
+  const child = {
+    stdout: stdoutStream,
+    stderr: stderrStream,
     stdin: {
-      end: vi.fn(() => {
-        if (result.stdout) stdoutHandler?.(result.stdout);
-        if (result.stderr) stderrHandler?.(result.stderr);
-        closeHandler?.(result.exitCode, result.signal ?? null);
+      end: vi.fn((data?: string) => {
+        void data;
+        // Push stdout/stderr then trigger close
+        if (result.stdout) stderrStream.emit('data', ''); // ensure stderr handler attached
+        setImmediate(() => {
+          if (result.stdout) stdoutStream.push(result.stdout);
+          stdoutStream.push(null);
+          if (result.stderr) stderrStream.push(result.stderr);
+          stderrStream.push(null);
+          setImmediate(() => closeHandler?.(result.exitCode, result.signal ?? null));
+        });
       }),
     },
-    on: vi.fn((event: string, handler: ((error: Error) => void) | ((exitCode: number | null, signal: NodeJS.Signals | null) => void)) => {
-      if (event === 'error') errorHandler = handler as (error: Error) => void;
-      if (event === 'close') closeHandler = handler as (exitCode: number | null, signal: NodeJS.Signals | null) => void;
+    on: vi.fn((event: string, handler: unknown) => {
+      if (event === 'error') errorHandler = handler as (err: Error) => void;
+      if (event === 'close') closeHandler = handler as (code: number | null, signal: NodeJS.Signals | null) => void;
     }),
     kill: vi.fn(),
-    emitError(error: Error) {
-      errorHandler?.(error);
-    },
+    emitError(error: Error) { errorHandler?.(error); },
   };
+
+  return child;
 }
 
 describe('CodexProvider', () => {
