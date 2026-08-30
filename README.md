@@ -1,4 +1,4 @@
-# Open Harness
+# Laravel Harness
 
 A file-based multi-agent harness for using Codex with Laravel projects running locally through Laravel Valet.
 
