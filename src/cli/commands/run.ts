@@ -1,15 +1,18 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import { RunManager } from '../../engine/run-manager.js';
-import { StateStore } from '../../state/state-store.js';
-import { EventLogger } from '../../telemetry/event-logger.js';
 import { WorkflowEngine } from '../../engine/workflow-engine.js';
 import { FakeProvider } from '../../providers/fake-provider.js';
+import { CodexProvider } from '../../providers/codex-provider.js';
+import { getCodexCliAvailabilityError } from '../../providers/codex-cli.js';
 import { loadConfig, findConfigPath } from '../../config/loader.js';
+import type { AgentProvider, HarnessConfig } from '../../types.js';
 import { statusToExitCode } from '../exit-codes.js';
 import { execSync } from 'child_process';
 
-export async function runCommand(task: string, cwd: string, options: { autoApprove?: boolean } = {}): Promise<void> {
+export async function runCommand(
+  task: string,
+  cwd: string,
+  options: { autoApprove?: boolean; provider?: string } = {}
+): Promise<void> {
   const configPath = findConfigPath(cwd);
   const { config, valid, errors } = loadConfig(configPath);
 
@@ -20,18 +23,42 @@ export async function runCommand(task: string, cwd: string, options: { autoAppro
     return;
   }
 
+  const providerName = resolveProviderName(config.provider, options.provider);
+  if (!providerName) {
+    console.error(`❌ Unsupported provider "${options.provider}". Use "codex" or "fake".`);
+    process.exitCode = 5;
+    return;
+  }
+
+  if (providerName === 'codex') {
+    const codexError = getCodexCliAvailabilityError(cwd);
+    if (codexError) {
+      console.error(`❌ ${codexError}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   // Gather git context
   let gitBranch: string | undefined;
   let gitCommit: string | undefined;
   try {
-    gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd, encoding: 'utf8' }).trim();
-    gitCommit = execSync('git rev-parse --short HEAD', { cwd, encoding: 'utf8' }).trim();
+    gitBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    gitCommit = execSync('git rev-parse --short HEAD', {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch { /* not a git repo or no commits */ }
 
   const manager = new RunManager(cwd);
-  const { runId, paths, manifest } = manager.create(task, {
+  const { runId, paths } = manager.create(task, {
     profile: config.profile,
-    provider: config.provider,
+    provider: providerName,
     gitBranch,
     gitCommit,
   });
@@ -40,18 +67,12 @@ export async function runCommand(task: string, cwd: string, options: { autoAppro
   console.log(`   Run ID : ${runId}`);
   console.log(`   Task   : ${task}`);
   console.log(`   Profile: ${config.profile}`);
-  console.log(`   Provider: ${config.provider}\n`);
+  console.log(`   Provider: ${providerName}\n`);
 
-  const provider = config.provider === 'fake'
-    ? new FakeProvider()
-    : new FakeProvider(); // CodexProvider will replace this in Phase 3
-
-  if (config.provider !== 'fake') {
-    console.log('⚠️  Codex provider not yet implemented — using FakeProvider.\n');
-  }
+  const provider = createProvider(providerName, cwd);
 
   const engine = new WorkflowEngine({
-    config,
+    config: { ...config, provider: providerName },
     provider,
     runId,
     paths,
@@ -75,4 +96,27 @@ export async function runCommand(task: string, cwd: string, options: { autoAppro
   console.log(`  lh inspect ${runId}  — to inspect artifacts\n`);
 
   process.exitCode = statusToExitCode(finalState.status);
+}
+
+function resolveProviderName(
+  configProvider: HarnessConfig['provider'],
+  override?: string
+): HarnessConfig['provider'] | null {
+  if (!override) {
+    return configProvider;
+  }
+
+  if (override === 'codex' || override === 'fake') {
+    return override;
+  }
+
+  return null;
+}
+
+function createProvider(providerName: HarnessConfig['provider'], cwd: string): AgentProvider {
+  if (providerName === 'fake') {
+    return new FakeProvider();
+  }
+
+  return new CodexProvider({ cwd });
 }

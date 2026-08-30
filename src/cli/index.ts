@@ -44,8 +44,8 @@ program
   .description('Run the full four-stage workflow for the given task')
   .option('--auto-approve', 'Skip interactive approval prompts (for scripting)')
   .option('--provider <name>', 'Override provider (codex | fake)')
-  .action(async (task: string, opts: { autoApprove?: boolean }) => {
-    await runCommand(task, cwd, { autoApprove: opts.autoApprove });
+  .action(async (task: string, opts: { autoApprove?: boolean; provider?: string }) => {
+    await runCommand(task, cwd, { autoApprove: opts.autoApprove, provider: opts.provider });
   });
 
 program

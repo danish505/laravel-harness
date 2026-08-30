@@ -57,6 +57,7 @@ export interface StageResult {
   input_hashes: Record<string, string>;
   output_files: string[];
   summary: string;
+  content: string;
   next_action: string;
   failure_classification: FailureClassification;
   failure_details?: string;

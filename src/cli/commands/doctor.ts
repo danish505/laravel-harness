@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { loadConfig, findConfigPath } from '../../config/loader.js';
+import { isCodexCliAvailable } from '../../providers/codex-cli.js';
 
 interface Check {
   name: string;
@@ -67,11 +68,7 @@ export function doctorCommand(cwd: string): void {
   }
 
   // Codex CLI
-  let codexOk = false;
-  try {
-    execSync('codex --version', { stdio: 'ignore' });
-    codexOk = true;
-  } catch { /* not found */ }
+  const codexOk = isCodexCliAvailable(cwd);
   checks.push({
     name: 'Codex CLI',
     pass: codexOk,

@@ -57,6 +57,10 @@
       "type": "string",
       "description": "One-paragraph human-readable summary of what was done."
     },
+    "content": {
+      "type": "string",
+      "description": "Full agent output written to the stage artifact file (e.g. plan.md)."
+    },
     "next_action": {
       "type": "string",
       "description": "What the workflow engine should do next."
