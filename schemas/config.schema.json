@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://laravel-harness/schemas/config.schema.json",
+  "title": "Laravel Harness V2 Configuration",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Config schema version. Must be 2."
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["laravel", "generic"],
+      "default": "generic",
+      "description": "Framework profile to use."
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "description": "Maximum repair attempts before the run is failed."
+        },
+        "plan_approval": {
+          "type": "string",
+          "enum": ["required", "automatic"],
+          "default": "required",
+          "description": "Whether a human must approve the plan before implementation."
+        },
+        "review_approval": {
+          "type": "string",
+          "enum": ["required", "automatic"],
+          "default": "automatic",
+          "description": "Whether a human must approve the final review."
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "planner":     { "$ref": "#/$defs/agentConfig" },
+        "implementer": { "$ref": "#/$defs/agentConfig" },
+        "tester":      { "$ref": "#/$defs/agentConfig" },
+        "reviewer":    { "$ref": "#/$defs/agentConfig" }
+      }
+    },
+    "quality_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require_tests": {
+          "type": "boolean",
+          "default": true
+        },
+        "require_clean_secrets_scan": {
+          "type": "boolean",
+          "default": true
+        },
+        "max_changed_files": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 25
+        },
+        "test_command": {
+          "type": "string",
+          "description": "Command to run tests. Overrides profile default."
+        },
+        "build_command": {
+          "type": "string",
+          "description": "Command to run build/lint. Overrides profile default."
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_runtime_minutes": {
+          "type": "number",
+          "minimum": 1,
+          "default": 45
+        },
+        "max_estimated_cost_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 10
+        }
+      }
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["codex", "fake"],
+      "default": "codex",
+      "description": "AI provider to use. Use 'fake' for testing."
+    }
+  },
+  "$defs": {
+    "agentConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["codex", "fake"]
+        },
+        "reasoning": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "system_prompt_override": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

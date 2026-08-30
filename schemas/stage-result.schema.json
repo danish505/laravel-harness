@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://laravel-harness/schemas/stage-result.schema.json",
+  "title": "Laravel Harness Stage Result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "attempt",
+    "stage",
+    "status",
+    "agent_id",
+    "provider",
+    "started_at",
+    "completed_at",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["planning", "implementing", "testing", "reviewing"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["success", "failure", "blocked"]
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Which agent role produced this result."
+    },
+    "provider": {
+      "type": "string"
+    },
+    "input_hashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "SHA-256 hashes of input artifacts keyed by artifact name."
+    },
+    "output_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Relative paths of files written by this stage."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-paragraph human-readable summary of what was done."
+    },
+    "next_action": {
+      "type": "string",
+      "description": "What the workflow engine should do next."
+    },
+    "failure_classification": {
+      "type": ["string", "null"],
+      "enum": ["test_failure", "review_rejection", "infrastructure", "timeout", "budget_exceeded", "invalid_output", null]
+    },
+    "failure_details": {
+      "type": "string",
+      "description": "Structured detail for the implementer repair prompt."
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens":  { "type": "integer" },
+        "output_tokens": { "type": "integer" },
+        "estimated_cost_usd": { "type": "number" }
+      }
+    },
+    "started_at":   { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" }
+  }
+}

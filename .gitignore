@@ -1,3 +1,8 @@
+# V2 build output and run artifacts
+dist/
+.laravel-harness/runs/
+.laravel-harness/config.yaml
+
 # Dependencies
 node_modules/
 vendor/

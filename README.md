@@ -168,6 +168,89 @@ Read:
 
 Do not commit real local state, logs, diffs, secrets, client names, or `.env` files. This repo commits examples only.
 
+---
+
+## V2 (Alpha) — CLI Orchestrator
+
+> **Status:** `2.0.0-alpha` — Sprint 1 vertical slice complete. TypeScript CLI with durable state machine and automated workflow.
+
+### Quick start
+
+```bash
+# In your project directory
+node /path/to/laravel-harness/dist/cli/index.js init
+node /path/to/laravel-harness/dist/cli/index.js doctor
+node /path/to/laravel-harness/dist/cli/index.js run "Add rate limiting to the login endpoint" --auto-approve
+```
+
+Or install globally via `npm link` inside `laravel-harness/`:
+
+```bash
+cd /path/to/laravel-harness
+npm install && npm run build && npm link
+
+# Then in any project:
+lh init
+lh doctor
+lh run "Your task description"
+```
+
+### CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `lh init` | Scaffold `.laravel-harness/config.yaml` with auto-detected profile |
+| `lh doctor` | Check Node, Git, Codex CLI, and config validity |
+| `lh config validate` | Validate config file against JSON Schema |
+| `lh config show` | Print merged configuration |
+| `lh run "<task>"` | Execute the full planner→implementer→tester→reviewer workflow |
+| `lh status <run-id>` | Show current state of a run |
+| `lh inspect <run-id>` | Print manifest, state, and full event log |
+| `lh cancel <run-id>` | Cancel a running or paused run |
+| `lh report <run-id>` | Print a consolidated Markdown report |
+
+### How it works
+
+```
+lh run "task"
+    │
+    ▼
+[planner]  → plan.md  → human approval (if required)
+    │
+    ▼
+[implementer] → implementation.md
+    │
+    ▼
+[tester]  → test-results.md
+    │  ↑ retry on failure (up to max_attempts)
+    ▼
+[reviewer] → review.md
+    │  ↑ retry on rejection (up to max_attempts)
+    ▼
+ APPROVED ✅  (or FAILED / CANCELLED)
+```
+
+Every state transition is written atomically to `.laravel-harness/runs/<run-id>/state.json`
+and appended to `events.jsonl` — making runs fully inspectable and resumable.
+
+### Running the tests
+
+```bash
+cd laravel-harness
+npm install
+npm run build
+npm test           # 47 tests, all passing
+```
+
+### V2 architecture
+
+See `docs/architecture/` for the Architecture Decision Records:
+- `ADR-001-typescript.md` — Why TypeScript + Node.js
+- `ADR-002-state-storage.md` — JSON file-based state with atomic writes
+- `ADR-003-provider-strategy.md` — Codex-first with adapter interface
+
+See `laravel-harness-V2-Implementation-Plan.md` for the full phased roadmap.
+
 ## License
 
 MIT

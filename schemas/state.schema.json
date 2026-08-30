@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://laravel-harness/schemas/state.schema.json",
+  "title": "Laravel Harness Run State",
+  "type": "object",
+  "required": ["schema_version", "run_id", "status", "attempt", "updated_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "ULID run identifier."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "created",
+        "planning",
+        "awaiting_plan_approval",
+        "implementing",
+        "testing",
+        "testing_failed",
+        "reviewing",
+        "review_rejected",
+        "approved",
+        "cancelled",
+        "failed",
+        "blocked"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current repair attempt number (0-based, increments on each retry)."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Human-readable reason for failure or block."
+    },
+    "transition_actor": {
+      "type": "string",
+      "description": "What caused the last transition: agent name, 'human', or 'system'."
+    }
+  }
+}
