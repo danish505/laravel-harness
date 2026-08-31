@@ -186,9 +186,11 @@ export class WorkflowEngine {
 
   private enterStage(stage: Stage, state: RunState, runId: string): RunState {
     const enterStatus = stageToEnterStatus(stage);
-    if (state.status === enterStatus) return state;
-    const next = this.store.transition(enterStatus, { actor: 'system' });
-    this.logger.stateTransition(runId, state.status, enterStatus, 'system');
+    let next = state;
+    if (state.status !== enterStatus) {
+      next = this.store.transition(enterStatus, { actor: 'system' });
+      this.logger.stateTransition(runId, state.status, enterStatus, 'system');
+    }
     this.logger.stageStart(runId, stage, next.attempt + 1);
     this.opts.reporter?.stageStarted(stage, next.attempt + 1);
     return next;

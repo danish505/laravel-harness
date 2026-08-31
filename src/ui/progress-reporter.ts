@@ -62,7 +62,7 @@ export class ProgressReporter {
 
   private stageSpinnerLabel(stage: Stage, attempt: number): string {
     const attemptSuffix = attempt > 1 ? ` \x1b[2m(attempt ${attempt})\x1b[0m` : '';
-    return `\x1b[36m[${STAGE_LABEL[stage]}]\x1b[0m${attemptSuffix} Codex is thinking…`;
+    return `\x1b[36m[${STAGE_LABEL[stage]}]\x1b[0m${attemptSuffix} Codex is working…`;
   }
 
   private eventIcon(type: CodexLiveEvent['type']): string {
