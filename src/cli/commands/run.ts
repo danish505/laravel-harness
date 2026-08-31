@@ -4,6 +4,8 @@ import { FakeProvider } from '../../providers/fake-provider.js';
 import { CodexProvider } from '../../providers/codex-provider.js';
 import { getCodexCliAvailabilityError } from '../../providers/codex-cli.js';
 import { loadConfig, findConfigPath } from '../../config/loader.js';
+import { ProgressReporter } from '../../ui/progress-reporter.js';
+import { Spinner } from '../../ui/spinner.js';
 import type { AgentProvider, HarnessConfig } from '../../types.js';
 import { statusToExitCode } from '../exit-codes.js';
 import { execSync } from 'child_process';
@@ -70,6 +72,7 @@ export async function runCommand(
   console.log(`   Provider: ${providerName}\n`);
 
   const provider = createProvider(providerName, cwd);
+  const reporter = new ProgressReporter(new Spinner(process.stdout.isTTY));
 
   const engine = new WorkflowEngine({
     config: { ...config, provider: providerName },
@@ -78,6 +81,7 @@ export async function runCommand(
     paths,
     task,
     autoApprove: options.autoApprove,
+    reporter,
   });
 
   const finalState = await engine.run();

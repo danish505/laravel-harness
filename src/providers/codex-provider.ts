@@ -2,11 +2,16 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as readline from 'readline';
 import type { AgentProvider, AgentRequest, AgentResult, FailureClassification } from '../types.js';
+import type { CodexLiveEvent } from '../ui/progress-reporter.js';
+
+export type CodexEventCallback = (event: CodexLiveEvent) => void;
 
 interface CodexProviderOptions {
   cwd: string;
   timeoutMs?: number;
+  onEvent?: CodexEventCallback;
 }
 
 interface CodexProcessResult {
@@ -25,10 +30,17 @@ interface CodexThreadUsage {
 export class CodexProvider implements AgentProvider {
   private cwd: string;
   private timeoutMs: number;
+  private onEvent: CodexEventCallback | undefined;
 
   constructor(options: CodexProviderOptions) {
     this.cwd = options.cwd;
     this.timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+    this.onEvent = options.onEvent;
+  }
+
+  /** Attach a live-event callback after construction (used by WorkflowEngine). */
+  setOnEvent(cb: CodexEventCallback): void {
+    this.onEvent = cb;
   }
 
   async execute(request: AgentRequest): Promise<AgentResult> {
@@ -127,8 +139,15 @@ export class CodexProvider implements AgentProvider {
         child.kill('SIGTERM');
       }, this.timeoutMs);
 
-      child.stdout.on('data', (chunk: Buffer | string) => {
-        stdout += chunk.toString();
+      // Stream-parse stdout line by line so we can emit live events
+      // while also accumulating the raw output for post-processing.
+      const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+
+      rl.on('line', (line) => {
+        stdout += line + '\n';
+        if (this.onEvent) {
+          this.dispatchLiveEvent(line);
+        }
       });
 
       child.stderr.on('data', (chunk: Buffer | string) => {
@@ -137,16 +156,61 @@ export class CodexProvider implements AgentProvider {
 
       child.on('error', (error) => {
         clearTimeout(timer);
+        rl.close();
         reject(error);
       });
 
       child.on('close', (exitCode, signal) => {
         clearTimeout(timer);
+        rl.close();
         resolve({ exitCode, signal, stdout, stderr, timedOut });
       });
 
       child.stdin.end(this.buildPrompt(request));
     });
+  }
+
+  private dispatchLiveEvent(line: string): void {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+
+    const cb = this.onEvent!;
+
+    if (parsed.type === 'item.started' || parsed.type === 'item.updated' || parsed.type === 'item.completed') {
+      const item = parsed.item as Record<string, unknown> | undefined;
+      if (!item) return;
+
+      const details = item.details as Record<string, unknown> | undefined;
+      if (!details) return;
+
+      const itemType = details.type as string | undefined;
+
+      if (itemType === 'command_execution') {
+        const cmd = (details.command as string | undefined) ?? '';
+        if (cmd) cb({ type: 'command', detail: `running: ${cmd}` });
+        return;
+      }
+
+      if (itemType === 'file_change') {
+        const changes = details.changes as Array<Record<string, unknown>> | undefined;
+        const p = changes?.[0]?.path as string | undefined;
+        if (p) cb({ type: 'patch', detail: `patching: ${p}` });
+        return;
+      }
+
+      if (itemType === 'agent_message') {
+        cb({ type: 'message', detail: 'agent is responding…' });
+        return;
+      }
+    }
+
+    if (parsed.type === 'turn.started') {
+      cb({ type: 'thinking', detail: 'new turn started' });
+    }
   }
 
   private buildPrompt(request: AgentRequest): string {
