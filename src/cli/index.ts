@@ -40,11 +40,11 @@ configCmd
   .action(() => configShowCommand(cwd));
 
 program
-  .command('run <task>')
-  .description('Run the full four-stage workflow for the given task')
+  .command('run [task]')
+  .description('Run the full four-stage workflow. Pass the task inline or define it in .laravel-harness/task.md')
   .option('--auto-approve', 'Skip interactive approval prompts (for scripting)')
   .option('--provider <name>', 'Override provider (codex | fake)')
-  .action(async (task: string, opts: { autoApprove?: boolean; provider?: string }) => {
+  .action(async (task: string | undefined, opts: { autoApprove?: boolean; provider?: string }) => {
     await runCommand(task, cwd, { autoApprove: opts.autoApprove, provider: opts.provider });
   });
 

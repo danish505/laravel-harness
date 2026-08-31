@@ -9,12 +9,18 @@ import { Spinner } from '../../ui/spinner.js';
 import type { AgentProvider, HarnessConfig } from '../../types.js';
 import { statusToExitCode } from '../exit-codes.js';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export async function runCommand(
-  task: string,
+  task: string | undefined,
   cwd: string,
   options: { autoApprove?: boolean; provider?: string } = {}
 ): Promise<void> {
+  const resolvedTask = resolveTask(task, cwd);
+  if (!resolvedTask) {
+    return;
+  }
   const configPath = findConfigPath(cwd);
   const { config, valid, errors } = loadConfig(configPath);
 
@@ -58,7 +64,7 @@ export async function runCommand(
   } catch { /* not a git repo or no commits */ }
 
   const manager = new RunManager(cwd);
-  const { runId, paths } = manager.create(task, {
+  const { runId, paths } = manager.create(resolvedTask, {
     profile: config.profile,
     provider: providerName,
     gitBranch,
@@ -67,7 +73,7 @@ export async function runCommand(
 
   console.log(`\n🚀 Laravel Harness V2`);
   console.log(`   Run ID : ${runId}`);
-  console.log(`   Task   : ${task}`);
+  console.log(`   Task   : ${resolvedTask}`);
   console.log(`   Profile: ${config.profile}`);
   console.log(`   Provider: ${providerName}\n`);
 
@@ -79,7 +85,7 @@ export async function runCommand(
     provider,
     runId,
     paths,
-    task,
+    task: resolvedTask,
     autoApprove: options.autoApprove,
     reporter,
   });
@@ -100,6 +106,31 @@ export async function runCommand(
   console.log(`  lh inspect ${runId}  — to inspect artifacts\n`);
 
   process.exitCode = statusToExitCode(finalState.status);
+}
+
+function resolveTask(inline: string | undefined, cwd: string): string | null {
+  if (inline && inline.trim()) {
+    return inline.trim();
+  }
+
+  const taskFile = path.join(cwd, '.laravel-harness', 'task.md');
+  if (!fs.existsSync(taskFile)) {
+    console.error('❌ No task provided and .laravel-harness/task.md does not exist.');
+    console.error('   Either run: lh run "your task"');
+    console.error('   Or create:  .laravel-harness/task.md with your task description.');
+    process.exitCode = 5;
+    return null;
+  }
+
+  const content = fs.readFileSync(taskFile, 'utf8').trim();
+  if (!content) {
+    console.error('❌ .laravel-harness/task.md is empty. Add your task description to it.');
+    process.exitCode = 5;
+    return null;
+  }
+
+  console.log(`📄 Using task from .laravel-harness/task.md`);
+  return content;
 }
 
 function resolveProviderName(
