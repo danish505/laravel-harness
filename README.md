@@ -199,15 +199,39 @@ lh run "Your task description"
 
 | Command | Description |
 |---------|-------------|
-| `lh init` | Scaffold `.laravel-harness/config.yaml` with auto-detected profile |
+| `lh init` | Scaffold `.laravel-harness/config.yaml` and `task.md` with auto-detected profile |
 | `lh doctor` | Check Node, Git, Codex CLI, and config validity |
 | `lh config validate` | Validate config file against JSON Schema |
 | `lh config show` | Print merged configuration |
 | `lh run "<task>"` | Execute the full planner→implementer→tester→reviewer workflow |
+| `lh run` | Same as above, reading the task from `.laravel-harness/task.md` |
 | `lh status <run-id>` | Show current state of a run |
 | `lh inspect <run-id>` | Print manifest, state, and full event log |
 | `lh cancel <run-id>` | Cancel a running or paused run |
 | `lh report <run-id>` | Print a consolidated Markdown report |
+
+### Providing a task
+
+You can provide the task inline or via a file.
+
+**Inline (one-off tasks):**
+```bash
+lh run "Add rate limiting to the login endpoint"
+```
+
+**File-based (`.laravel-harness/task.md`):**
+
+If you run `lh run` without an argument, the CLI reads your task from `.laravel-harness/task.md`. This file is created automatically by `lh init`.
+
+```bash
+# Edit the task file
+nano .laravel-harness/task.md
+
+# Then run without an inline prompt
+lh run
+```
+
+The inline argument always takes priority — if you pass a prompt and the file exists, the file is ignored.
 
 ### How it works
 

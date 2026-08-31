@@ -60,8 +60,14 @@ export function initCommand(cwd: string): void {
   const config = CONFIG_TEMPLATE.replace('PROFILE_PLACEHOLDER', detection.profile);
   fs.writeFileSync(configPath, config, 'utf8');
 
+  const taskPath = path.join(harnessDir, 'task.md');
+  if (!fs.existsSync(taskPath)) {
+    fs.writeFileSync(taskPath, '# Task\n\nReplace this with your task description. This file is used when you run `lh run` without an inline prompt.\n', 'utf8');
+  }
+
   console.log(`✓ Initialized Laravel Harness V2`);
-  console.log(`  Config: ${configPath}`);
+  console.log(`  Config:    ${configPath}`);
+  console.log(`  Task file: ${taskPath}  (edit to define your default task)`);
   console.log(`  Profile detected: ${detection.profile}`);
   detection.hints.forEach((h) => console.log(`    • ${h}`));
   console.log('\n  Next: run "lh doctor" to verify your environment.');
