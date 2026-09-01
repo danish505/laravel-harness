@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { detectProfile } from '../../profiles/detector.js';
+import { HARNESS_DIR_NAME, HARNESS_NAME_WITH_VERSION } from '../../constants.js';
 
 const CODEX_TEMPLATE_DIR = path.resolve(__dirname, '../../../templates/codex');
 
@@ -14,7 +15,7 @@ const CODEX_FILES = [
   path.join('agents', 'reviewer.toml'),
 ];
 
-const CONFIG_TEMPLATE = `# Laravel Harness V2 Configuration
+const CONFIG_TEMPLATE = `# ${HARNESS_NAME_WITH_VERSION} Configuration
 # https://github.com/danish505/OpenHarness
 version: 2
 
@@ -55,7 +56,7 @@ budget:
 `;
 
 export function initCommand(cwd: string): void {
-  const harnessDir = path.join(cwd, '.laravel-harness');
+  const harnessDir = path.join(cwd, HARNESS_DIR_NAME);
   const configPath = path.join(harnessDir, 'config.yaml');
 
   if (fs.existsSync(configPath)) {
@@ -91,7 +92,7 @@ export function initCommand(cwd: string): void {
     }
   }
 
-  console.log(`✓ Initialized Laravel Harness V2`);
+  console.log(`✓ Initialized ${HARNESS_NAME_WITH_VERSION}`);
   console.log(`  Config:    ${configPath}`);
   console.log(`  Task file: ${taskPath}  (edit to define your default task)`);
   console.log(`  Profile detected: ${detection.profile}`);

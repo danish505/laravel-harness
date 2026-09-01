@@ -1,5 +1,5 @@
 name = "implementer"
-description = "Implements the approved plan with minimal safe changes for the current Laravel Harness V2 run."
+description = "Implements the approved plan with minimal safe changes for the current Largentic V2 run."
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = '''

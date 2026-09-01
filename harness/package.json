@@ -1,5 +1,5 @@
 {
-  "name": "codex-laravel-harness-browser-tests",
+  "name": "codex-largentic-browser-tests",
   "private": true,
   "scripts": {
     "test:browser": "playwright test"

@@ -1,6 +1,6 @@
-# Laravel Harness
+# Largentic
 
-A file-based multi-agent harness for using Codex with Laravel projects running locally through Laravel Valet.
+A file-based multi-agent harness for using Codex with Laravel projects.
 
 The harness uses a structured workflow:
 
@@ -33,7 +33,7 @@ This project helps you:
 ## Suggested Repository Structure
 
 ```text
-codex-laravel-harness/
+codex-largentic/
 ├── .codex/
 │   ├── config.toml
 │   ├── global-rules.md
@@ -42,7 +42,7 @@ codex-laravel-harness/
 │       ├── implementer.toml
 │       ├── tester.toml
 │       └── reviewer.toml
-├── .laravel-harness/
+├── .largentic/
 │   ├── config.yaml
 │   ├── task.md
 │   └── runs/
@@ -68,7 +68,7 @@ codex-laravel-harness/
 Install the harness CLI globally:
 
 ```bash
-cd /path/to/laravel-harness
+cd /path/to/largentic
 npm install && npm run build && npm link
 ```
 
@@ -81,8 +81,8 @@ lh init
 This creates:
 
 ```text
-.laravel-harness/config.yaml
-.laravel-harness/task.md
+.largentic/config.yaml
+.largentic/task.md
 .codex/config.toml
 .codex/global-rules.md
 .codex/agents/planner.toml
@@ -91,7 +91,7 @@ This creates:
 .codex/agents/reviewer.toml
 ```
 
-Edit `.laravel-harness/config.yaml` and `.laravel-harness/task.md` to match your project. Customize `.codex/global-rules.md` and `.codex/agents/*.toml` per project to adjust agent behavior, coding standards, and handoff formats.
+Edit `.largentic/config.yaml` and `.largentic/task.md` to match your project. Customize `.codex/global-rules.md` and `.codex/agents/*.toml` per project to adjust agent behavior, coding standards, and handoff formats.
 
 ## Playwright
 
@@ -109,10 +109,10 @@ npx playwright install
 When the Captain asks to run the harness:
 
 1. Read `.codex/global-rules.md`.
-2. Use the planner agent to write `.laravel-harness/runs/<run-id>/plan.md`.
+2. Use the planner agent to write `.largentic/runs/<run-id>/plan.md`.
 3. Use the implementer agent to read the plan and implement the patch.
-4. Use the tester agent to write `.laravel-harness/runs/<run-id>/test-results.md`.
-5. Use the reviewer agent to write `.laravel-harness/runs/<run-id>/review.md`.
+4. Use the tester agent to write `.largentic/runs/<run-id>/test-results.md`.
+5. Use the reviewer agent to write `.largentic/runs/<run-id>/review.md`.
 6. If the tester fails, repeat implementer -> tester.
 7. If the review fails, repeat implementer → tester → reviewer.
 8. Use files as the source of truth, not chat output.
@@ -126,7 +126,7 @@ From your Laravel project root:
 lh run "Add rate limiting to the login endpoint"
 ```
 
-Or create `.laravel-harness/task.md` and run:
+Or create `.largentic/task.md` and run:
 
 ```bash
 lh run
@@ -135,10 +135,10 @@ lh run
 ## Workflow
 
 ```text
-planner -> .laravel-harness/runs/<run-id>/plan.md
-implementer -> .laravel-harness/runs/<run-id>/implementation.md
-tester -> .laravel-harness/runs/<run-id>/test-results.md
-reviewer -> .laravel-harness/runs/<run-id>/review.md
+planner -> .largentic/runs/<run-id>/plan.md
+implementer -> .largentic/runs/<run-id>/implementation.md
+tester -> .largentic/runs/<run-id>/test-results.md
+reviewer -> .largentic/runs/<run-id>/review.md
 ```
 
 If the reviewer rejects the patch:
@@ -182,15 +182,15 @@ Do not commit real local state, logs, diffs, secrets, client names, or `.env` fi
 
 ```bash
 # In your project directory
-node /path/to/laravel-harness/dist/cli/index.js init
-node /path/to/laravel-harness/dist/cli/index.js doctor
-node /path/to/laravel-harness/dist/cli/index.js run "Add rate limiting to the login endpoint" --auto-approve
+node /path/to/largentic/dist/cli/index.js init
+node /path/to/largentic/dist/cli/index.js doctor
+node /path/to/largentic/dist/cli/index.js run "Add rate limiting to the login endpoint" --auto-approve
 ```
 
-Or install globally via `npm link` inside `laravel-harness/`:
+Or install globally via `npm link` inside `largentic/`:
 
 ```bash
-cd /path/to/laravel-harness
+cd /path/to/largentic
 npm install && npm run build && npm link
 
 # Then in any project:
@@ -203,12 +203,12 @@ lh run "Your task description"
 
 | Command | Description |
 |---------|-------------|
-| `lh init` | Scaffold `.laravel-harness/config.yaml` and `task.md` with auto-detected profile |
+| `lh init` | Scaffold `.largentic/config.yaml` and `task.md` with auto-detected profile |
 | `lh doctor` | Check Node, Git, Codex CLI, and config validity |
 | `lh config validate` | Validate config file against JSON Schema |
 | `lh config show` | Print merged configuration |
 | `lh run "<task>"` | Execute the full planner→implementer→tester→reviewer workflow |
-| `lh run` | Same as above, reading the task from `.laravel-harness/task.md` |
+| `lh run` | Same as above, reading the task from `.largentic/task.md` |
 | `lh status <run-id>` | Show current state of a run |
 | `lh inspect <run-id>` | Print manifest, state, and full event log |
 | `lh cancel <run-id>` | Cancel a running or paused run |
@@ -223,13 +223,13 @@ You can provide the task inline or via a file.
 lh run "Add rate limiting to the login endpoint"
 ```
 
-**File-based (`.laravel-harness/task.md`):**
+**File-based (`.largentic/task.md`):**
 
-If you run `lh run` without an argument, the CLI reads your task from `.laravel-harness/task.md`. This file is created automatically by `lh init`.
+If you run `lh run` without an argument, the CLI reads your task from `.largentic/task.md`. This file is created automatically by `lh init`.
 
 ```bash
 # Edit the task file
-nano .laravel-harness/task.md
+nano .largentic/task.md
 
 # Then run without an inline prompt
 lh run
@@ -243,29 +243,29 @@ The inline argument always takes priority — if you pass a prompt and the file 
 lh run "task"
     │
     ▼
-[planner]  → .laravel-harness/runs/<run-id>/plan.md  → human approval (if required)
+[planner]  → .largentic/runs/<run-id>/plan.md  → human approval (if required)
     │
     ▼
-[implementer] → .laravel-harness/runs/<run-id>/implementation.md
+[implementer] → .largentic/runs/<run-id>/implementation.md
     │
     ▼
-[tester]  → .laravel-harness/runs/<run-id>/test-results.md
+[tester]  → .largentic/runs/<run-id>/test-results.md
     │  ↑ retry on failure (up to max_attempts)
     ▼
-[reviewer] → .laravel-harness/runs/<run-id>/review.md
+[reviewer] → .largentic/runs/<run-id>/review.md
     │  ↑ retry on rejection (up to max_attempts)
     ▼
  APPROVED ✅  (or FAILED / CANCELLED)
 ```
 
-The harness uses the native Codex agents registered in `.codex/agents/*.toml`. Each stage prompt tells the selected agent its run ID, attempt, run directory, required input artifacts, and the path to `.codex/global-rules.md`. Every state transition is written atomically to `.laravel-harness/runs/<run-id>/state.json` and appended to `events.jsonl` — making runs fully inspectable and resumable.
+The harness uses the native Codex agents registered in `.codex/agents/*.toml`. Each stage prompt tells the selected agent its run ID, attempt, run directory, required input artifacts, and the path to `.codex/global-rules.md`. Every state transition is written atomically to `.largentic/runs/<run-id>/state.json` and appended to `events.jsonl` — making runs fully inspectable and resumable.
 
 When the effective provider is `codex`, `lh run` verifies that `.codex/config.toml`, `.codex/global-rules.md`, and all four agent TOMLs exist and are readable before starting. Missing files produce an actionable error suggesting `lh init`.
 
 ### Running the tests
 
 ```bash
-cd laravel-harness
+cd largentic
 npm install
 npm run build
 npm test           # 72 tests, all passing
@@ -278,7 +278,7 @@ See `docs/architecture/` for the Architecture Decision Records:
 - `ADR-002-state-storage.md` — JSON file-based state with atomic writes
 - `ADR-003-provider-strategy.md` — Codex-first with adapter interface
 
-See `laravel-harness-V2-Implementation-Plan.md` for the full phased roadmap.
+See `largentic-V2-Implementation-Plan.md` for the full phased roadmap.
 
 ## License
 

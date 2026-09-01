@@ -7,6 +7,7 @@ import { configValidateCommand, configShowCommand } from './commands/config.js';
 import { runCommand } from './commands/run.js';
 import { statusCommand, inspectCommand, cancelCommand } from './commands/status.js';
 import { reportCommand } from './commands/report.js';
+import { HARNESS_DIR_NAME, HARNESS_NAME_WITH_VERSION } from '../constants.js';
 
 const cwd = process.cwd();
 
@@ -14,12 +15,12 @@ const program = new Command();
 
 program
   .name('lh')
-  .description('Laravel Harness V2 — AI-powered software-engineering workflow')
+  .description(`${HARNESS_NAME_WITH_VERSION} — AI-powered software-engineering workflow`)
   .version('2.0.0-alpha.0');
 
 program
   .command('init')
-  .description('Initialise Laravel Harness in the current project')
+  .description(`Initialise ${HARNESS_NAME_WITH_VERSION} in the current project`)
   .action(() => initCommand(cwd));
 
 program
@@ -41,7 +42,7 @@ configCmd
 
 program
   .command('run [task]')
-  .description('Run the full four-stage workflow. Pass the task inline or define it in .laravel-harness/task.md')
+  .description(`Run the full four-stage workflow. Pass the task inline or define it in ${HARNESS_DIR_NAME}/task.md`)
   .option('--auto-approve', 'Skip interactive approval prompts (for scripting)')
   .option('--provider <name>', 'Override provider (codex | fake)')
   .action(async (task: string | undefined, opts: { autoApprove?: boolean; provider?: string }) => {

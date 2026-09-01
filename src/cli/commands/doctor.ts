@@ -3,6 +3,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { loadConfig, findConfigPath } from '../../config/loader.js';
 import { isCodexCliAvailable } from '../../providers/codex-cli.js';
+import { HARNESS_DIR_NAME, HARNESS_NAME_WITH_VERSION } from '../../constants.js';
 
 interface Check {
   name: string;
@@ -63,7 +64,7 @@ export function doctorCommand(cwd: string): void {
       name: 'Config valid',
       pass: valid,
       message: valid ? 'valid' : errors.join('; '),
-      fix: valid ? undefined : 'Edit .laravel-harness/config.yaml and fix the reported errors.',
+      fix: valid ? undefined : `Edit ${HARNESS_DIR_NAME}/config.yaml and fix the reported errors.`,
     });
   }
 
@@ -78,7 +79,7 @@ export function doctorCommand(cwd: string): void {
 
   // Print results
   const allPass = checks.every((c) => c.pass);
-  console.log('\nLaravel Harness V2 — Doctor\n');
+  console.log(`\n${HARNESS_NAME_WITH_VERSION} — Doctor\n`);
   for (const c of checks) {
     const icon = c.pass ? '✅' : '❌';
     console.log(`  ${icon} ${c.name}: ${c.message}`);

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://laravel-harness/schemas/stage-result.schema.json",
-  "title": "Laravel Harness Stage Result",
+  "$id": "https://largentic/schemas/stage-result.schema.json",
+  "title": "Largentic Stage Result",
   "type": "object",
   "required": [
     "schema_version",

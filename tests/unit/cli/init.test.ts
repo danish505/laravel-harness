@@ -22,8 +22,8 @@ describe('initCommand', () => {
   it('creates harness config and deploys Codex setup files', () => {
     initCommand(tmpDir);
 
-    expect(fs.existsSync(path.join(tmpDir, '.laravel-harness', 'config.yaml'))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, '.laravel-harness', 'task.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.largentic', 'config.yaml'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, '.largentic', 'task.md'))).toBe(true);
 
     expect(fs.existsSync(path.join(tmpDir, '.codex', 'config.toml'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, '.codex', 'global-rules.md'))).toBe(true);
@@ -48,7 +48,7 @@ describe('initCommand', () => {
   });
 
   it('is a no-op when config already exists', () => {
-    const harnessDir = path.join(tmpDir, '.laravel-harness');
+    const harnessDir = path.join(tmpDir, '.largentic');
     fs.mkdirSync(harnessDir, { recursive: true });
     fs.writeFileSync(path.join(harnessDir, 'config.yaml'), 'version: 2\n', 'utf8');
 

@@ -53,7 +53,7 @@ function makeTmpDir(): string {
 }
 
 function writeConfig(dir: string, content: object): void {
-  const harnessDir = path.join(dir, '.laravel-harness');
+  const harnessDir = path.join(dir, '.largentic');
   fs.mkdirSync(path.join(harnessDir, 'runs'), { recursive: true });
   fs.writeFileSync(path.join(harnessDir, 'config.yaml'), yaml.dump(content), 'utf8');
 }
