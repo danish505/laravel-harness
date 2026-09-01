@@ -3,6 +3,7 @@ import { WorkflowEngine } from '../../engine/workflow-engine.js';
 import { FakeProvider } from '../../providers/fake-provider.js';
 import { CodexProvider } from '../../providers/codex-provider.js';
 import { getCodexCliAvailabilityError } from '../../providers/codex-cli.js';
+import { getCodexProjectConfigError } from '../../providers/codex-preflight.js';
 import { loadConfig, findConfigPath } from '../../config/loader.js';
 import { ProgressReporter } from '../../ui/progress-reporter.js';
 import { Spinner } from '../../ui/spinner.js';
@@ -43,6 +44,14 @@ export async function runCommand(
     if (codexError) {
       console.error(`❌ ${codexError}`);
       process.exitCode = 1;
+      return;
+    }
+
+    const configError = getCodexProjectConfigError(cwd);
+    if (configError) {
+      console.error('❌ Native-agent mode cannot start.');
+      console.error(configError);
+      process.exitCode = 5;
       return;
     }
   }
@@ -86,6 +95,7 @@ export async function runCommand(
     runId,
     paths,
     task: resolvedTask,
+    cwd,
     autoApprove: options.autoApprove,
     reporter,
   });

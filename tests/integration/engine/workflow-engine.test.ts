@@ -51,6 +51,7 @@ describe('WorkflowEngine — integration', () => {
       runId,
       paths,
       task: 'Add rate limiting',
+      cwd: tmpDir,
       autoApprove: true,
     });
 
@@ -104,6 +105,7 @@ describe('WorkflowEngine — integration', () => {
       runId,
       paths,
       task: 'Fix bug',
+      cwd: tmpDir,
       autoApprove: true,
     });
 
@@ -133,6 +135,7 @@ describe('WorkflowEngine — integration', () => {
       runId,
       paths,
       task: 'Always failing task',
+      cwd: tmpDir,
       autoApprove: true,
     });
 
@@ -166,6 +169,7 @@ describe('WorkflowEngine — integration', () => {
       runId,
       paths,
       task: 'Resume test',
+      cwd: tmpDir,
       autoApprove: true,
     });
 
@@ -186,6 +190,7 @@ describe('WorkflowEngine — integration', () => {
       runId,
       paths,
       task: 'Events test',
+      cwd: tmpDir,
       autoApprove: true,
     });
 
@@ -227,11 +232,62 @@ describe('WorkflowEngine — integration', () => {
       runId,
       paths,
       task: 'Malformed test',
+      cwd: tmpDir,
       autoApprove: true,
     });
 
     const finalState = await engine.run();
     // Should not be approved with failures
     expect(finalState.status).not.toBe('approved');
+  });
+
+  it('passes conductor context to each stage', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Conductor test', { profile: 'generic', provider: 'fake' });
+
+    const provider = new FakeProvider();
+    const requests: Array<{ stage: string; systemPrompt: string; userMessage: string }> = [];
+    const originalExecute = provider.execute.bind(provider);
+    provider.execute = async (req) => {
+      requests.push({ stage: req.stage, systemPrompt: req.systemPrompt, userMessage: req.userMessage });
+      return originalExecute(req);
+    };
+
+    const engine = new WorkflowEngine({
+      config: defaultConfig(),
+      provider,
+      runId,
+      paths,
+      task: 'Conductor test',
+      cwd: tmpDir,
+      autoApprove: true,
+    });
+
+    await engine.run();
+
+    expect(requests).toHaveLength(4);
+
+    const planning = requests.find((r) => r.stage === 'planning');
+    expect(planning).toBeDefined();
+    expect(planning!.systemPrompt).toContain('Selected agent: planner');
+    expect(planning!.systemPrompt).toContain(`.codex/global-rules.md`);
+    expect(planning!.systemPrompt).toContain(runId);
+    expect(planning!.systemPrompt).toContain(paths.runDir);
+
+    const implementing = requests.find((r) => r.stage === 'implementing');
+    expect(implementing).toBeDefined();
+    expect(implementing!.systemPrompt).toContain('Selected agent: implementer');
+    expect(implementing!.systemPrompt).toContain(path.join(paths.runDir, 'plan.md'));
+    expect(implementing!.systemPrompt).toContain(path.join(paths.runDir, 'implementation.md'));
+
+    const testing = requests.find((r) => r.stage === 'testing');
+    expect(testing).toBeDefined();
+    expect(testing!.systemPrompt).toContain('Selected agent: tester');
+    expect(testing!.systemPrompt).toContain(path.join(paths.runDir, 'implementation.md'));
+
+    const reviewing = requests.find((r) => r.stage === 'reviewing');
+    expect(reviewing).toBeDefined();
+    expect(reviewing!.systemPrompt).toContain('Selected agent: reviewer');
+    expect(reviewing!.systemPrompt).toContain(path.join(paths.runDir, 'test-results.md'));
   });
 });

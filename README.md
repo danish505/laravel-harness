@@ -36,23 +36,23 @@ This project helps you:
 codex-laravel-harness/
 ├── .codex/
 │   ├── config.toml
+│   ├── global-rules.md
 │   └── agents/
 │       ├── planner.toml
 │       ├── implementer.toml
 │       ├── tester.toml
 │       └── reviewer.toml
-├── harness/
-│   ├── harness.config.example.json
-│   ├── state/context.example.json
-│   ├── plans/plan.example.md
-│   ├── reports/
-│   │   ├── implementation.example.md
-│   │   ├── test-results.example.md
-│   │   └── review.example.md
-│   ├── prompts/run-harness.md
-│   ├── scripts/
-│   ├── package.json
-│   └── playwright.config.js
+├── .laravel-harness/
+│   ├── config.yaml
+│   ├── task.md
+│   └── runs/
+│       └── <run-id>/
+│           ├── plan.md
+│           ├── implementation.md
+│           ├── test-results.md
+│           ├── review.md
+│           ├── state.json
+│           └── events.jsonl
 ├── docs/
 │   ├── architecture.md
 │   ├── design-patterns.md
@@ -65,32 +65,41 @@ codex-laravel-harness/
 
 ## Installation
 
-Copy `.codex/` and `harness/` into the root of your Laravel project, beside your existing `AGENTS.md`.
-
-Create local config files from examples:
+Install the harness CLI globally:
 
 ```bash
-cd harness
-./scripts/bootstrap-local-files.sh
+cd /path/to/laravel-harness
+npm install && npm run build && npm link
 ```
 
-Edit:
+In your Laravel project root, run:
+
+```bash
+lh init
+```
+
+This creates:
 
 ```text
-harness/harness.config.json
-harness/state/context.json
-harness/playwright.config.js
+.laravel-harness/config.yaml
+.laravel-harness/task.md
+.codex/config.toml
+.codex/global-rules.md
+.codex/agents/planner.toml
+.codex/agents/implementer.toml
+.codex/agents/tester.toml
+.codex/agents/reviewer.toml
 ```
 
-Replace placeholders with your real project path and Valet URL.
+Edit `.laravel-harness/config.yaml` and `.laravel-harness/task.md` to match your project. Customize `.codex/global-rules.md` and `.codex/agents/*.toml` per project to adjust agent behavior, coding standards, and handoff formats.
 
 ## Playwright
 
-Install Playwright in the `harness/` folder:
+If your project uses Playwright, install it in the project root as usual:
 
 ```bash
-cd harness
-./scripts/install-playwright.sh
+npm install --save-dev @playwright/test
+npx playwright install
 ```
 
 ## Add this to AGENTS.md file
@@ -99,19 +108,14 @@ cd harness
 
 When the Captain asks to run the harness:
 
-1. Read `harness/prompts/run-harness.md`.
-2. Use the planner agent to write `harness/plans/plan.md`.
-3. Use the implementer agent to read `harness/plans/plan.md` and implement the patch.
-4. Use the tester agent to write `harness/reports/test-results.md`.
-5. Use the reviewer agent to write `harness/reports/review.md`.
+1. Read `.codex/global-rules.md`.
+2. Use the planner agent to write `.laravel-harness/runs/<run-id>/plan.md`.
+3. Use the implementer agent to read the plan and implement the patch.
+4. Use the tester agent to write `.laravel-harness/runs/<run-id>/test-results.md`.
+5. Use the reviewer agent to write `.laravel-harness/runs/<run-id>/review.md`.
 6. If the tester fails, repeat implementer -> tester.
 7. If the review fails, repeat implementer → tester → reviewer.
 8. Use files as the source of truth, not chat output.
-```
-
-## Replace task in:
-```text 
-harness/prompts/run-harness.md
 ```
 
 ## Running the Harness
@@ -119,22 +123,22 @@ harness/prompts/run-harness.md
 From your Laravel project root:
 
 ```bash
-codex
+lh run "Add rate limiting to the login endpoint"
 ```
 
-Simply ask codex to run the harness
+Or create `.laravel-harness/task.md` and run:
 
-```text
-run the harness
+```bash
+lh run
 ```
 
 ## Workflow
 
 ```text
-planner -> harness/plans/plan.md
-implementer -> harness/reports/implementation.md + harness/artifacts/latest-diff.patch
-tester -> harness/reports/test-results.md
-reviewer -> harness/reports/review.md
+planner -> .laravel-harness/runs/<run-id>/plan.md
+implementer -> .laravel-harness/runs/<run-id>/implementation.md
+tester -> .laravel-harness/runs/<run-id>/test-results.md
+reviewer -> .laravel-harness/runs/<run-id>/review.md
 ```
 
 If the reviewer rejects the patch:
@@ -239,23 +243,24 @@ The inline argument always takes priority — if you pass a prompt and the file 
 lh run "task"
     │
     ▼
-[planner]  → plan.md  → human approval (if required)
+[planner]  → .laravel-harness/runs/<run-id>/plan.md  → human approval (if required)
     │
     ▼
-[implementer] → implementation.md
+[implementer] → .laravel-harness/runs/<run-id>/implementation.md
     │
     ▼
-[tester]  → test-results.md
+[tester]  → .laravel-harness/runs/<run-id>/test-results.md
     │  ↑ retry on failure (up to max_attempts)
     ▼
-[reviewer] → review.md
+[reviewer] → .laravel-harness/runs/<run-id>/review.md
     │  ↑ retry on rejection (up to max_attempts)
     ▼
  APPROVED ✅  (or FAILED / CANCELLED)
 ```
 
-Every state transition is written atomically to `.laravel-harness/runs/<run-id>/state.json`
-and appended to `events.jsonl` — making runs fully inspectable and resumable.
+The harness uses the native Codex agents registered in `.codex/agents/*.toml`. Each stage prompt tells the selected agent its run ID, attempt, run directory, required input artifacts, and the path to `.codex/global-rules.md`. Every state transition is written atomically to `.laravel-harness/runs/<run-id>/state.json` and appended to `events.jsonl` — making runs fully inspectable and resumable.
+
+When the effective provider is `codex`, `lh run` verifies that `.codex/config.toml`, `.codex/global-rules.md`, and all four agent TOMLs exist and are readable before starting. Missing files produce an actionable error suggesting `lh init`.
 
 ### Running the tests
 
@@ -263,7 +268,7 @@ and appended to `events.jsonl` — making runs fully inspectable and resumable.
 cd laravel-harness
 npm install
 npm run build
-npm test           # 47 tests, all passing
+npm test           # 72 tests, all passing
 ```
 
 ### V2 architecture

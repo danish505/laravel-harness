@@ -4,6 +4,21 @@
 
 Major release of the Laravel Harness with a full file-based SDLC workflow.
 
+### Added
+
+- `lh init` now deploys project-local Codex configuration: `.codex/config.toml`, `.codex/global-rules.md`, and `.codex/agents/*.toml`. This lets every project customize agent guidance independently.
+- Native-agent preflight check: `lh run` verifies required `.codex/` files exist and are readable before starting a Codex-backed run, failing early with an actionable message.
+- Conductor prompt now includes the selected native agent name, run ID, attempt, run directory, required input artifacts, `.codex/global-rules.md` path, and any per-role `system_prompt_override`.
+
+### Changed
+
+- Agent TOMLs and templates now reference V2 per-run artifact paths (`<run-dir>/plan.md`, `<run-dir>/implementation.md`, `<run-dir>/test-results.md`, `<run-dir>/review.md`) instead of the V1 `harness/` paths.
+- `docs/codex-setup.md` updated to describe the native-agent workflow, required files, and V2 artifact locations.
+
+### Fixed
+
+- Workflow engine no longer relies on `process.cwd()` for global-rules and `AGENTS.md` paths; it uses the project root passed in at construction.
+
 - Introduced V2 harness architecture with a CLI-driven state machine and workflow engine.
 - Added the full agent pipeline: planner → implementer → tester → reviewer with retry loops.
 - Added `AGENTS.md` harness execution protocol for consistent agent handoffs.

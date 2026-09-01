@@ -8,6 +8,12 @@
   "bin": {
     "lh": "bin/lh"
   },
+  "files": [
+    "bin",
+    "dist",
+    "schemas",
+    "templates"
+  ],
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",

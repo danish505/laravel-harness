@@ -11,11 +11,13 @@ const {
   workflowEngineRun,
   codexProviderCtor,
   codexAvailabilityMock,
+  codexPreflightMock,
 } = vi.hoisted(() => ({
   workflowEngineCtor: vi.fn(),
   workflowEngineRun: vi.fn(),
   codexProviderCtor: vi.fn(),
   codexAvailabilityMock: vi.fn(),
+  codexPreflightMock: vi.fn(),
 }));
 
 vi.mock('../../../src/engine/workflow-engine.js', () => ({
@@ -42,6 +44,10 @@ vi.mock('../../../src/providers/codex-cli.js', () => ({
   getCodexCliAvailabilityError: codexAvailabilityMock,
 }));
 
+vi.mock('../../../src/providers/codex-preflight.js', () => ({
+  getCodexProjectConfigError: codexPreflightMock,
+}));
+
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'lh-run-command-test-'));
 }
@@ -65,6 +71,8 @@ describe('runCommand', () => {
     codexProviderCtor.mockReset();
     codexAvailabilityMock.mockReset();
     codexAvailabilityMock.mockReturnValue(null);
+    codexPreflightMock.mockReset();
+    codexPreflightMock.mockReturnValue(null);
     process.exitCode = undefined;
   });
 
@@ -83,9 +91,10 @@ describe('runCommand', () => {
     expect(codexAvailabilityMock).toHaveBeenCalledWith(tmpDir);
     expect(codexProviderCtor).toHaveBeenCalledWith({ cwd: tmpDir });
 
-    const engineOptions = workflowEngineCtor.mock.calls[0][0] as { provider: unknown };
+    const engineOptions = workflowEngineCtor.mock.calls[0][0] as { provider: unknown; cwd: string };
     expect(engineOptions.provider).toBeInstanceOf(Object);
     expect(engineOptions.provider).not.toBeInstanceOf(FakeProvider);
+    expect(engineOptions.cwd).toBe(tmpDir);
   });
 
   it('uses FakeProvider when provider override is fake', async () => {
@@ -108,5 +117,17 @@ describe('runCommand', () => {
     expect(workflowEngineCtor).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith('❌ Codex CLI is not available.');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('fails early when codex project config is missing', async () => {
+    writeConfig(tmpDir, { version: 2, provider: 'codex' });
+    codexPreflightMock.mockReturnValue('Missing .codex/config.toml');
+
+    await runCommand('Implement feature', tmpDir, { autoApprove: true });
+
+    expect(codexPreflightMock).toHaveBeenCalledWith(tmpDir);
+    expect(workflowEngineCtor).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith('❌ Native-agent mode cannot start.');
+    expect(process.exitCode).toBe(5);
   });
 });
