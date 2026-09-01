@@ -25,6 +25,7 @@ export interface WorkflowEngineOptions {
   runId: string;
   paths: RunPaths;
   task: string;
+  cwd: string;
   /** If true, auto-approve plan (skips interactive prompt). Used in tests. */
   autoApprove?: boolean;
   /** Optional live progress reporter — omit for silent/test mode. */
@@ -38,6 +39,13 @@ const STAGE_TO_ARTIFACT: Record<Stage, string> = {
   implementing: 'implementation.md',
   testing:      'test-results.md',
   reviewing:    'review.md',
+};
+
+const STAGE_TO_AGENT: Record<Stage, string> = {
+  planning:     'planner',
+  implementing: 'implementer',
+  testing:      'tester',
+  reviewing:    'reviewer',
 };
 
 export class WorkflowEngine {
@@ -203,9 +211,18 @@ export class WorkflowEngine {
     task: string
   ): Promise<StageResult> {
     const started_at = new Date().toISOString();
+    const attempt = state.attempt + 1;
 
-    const systemPrompt = buildSystemPrompt(stage);
-    const userMessage  = buildUserMessage(stage, task, state.attempt + 1);
+    const systemPrompt = buildSystemPrompt({
+      stage,
+      agentName: STAGE_TO_AGENT[stage],
+      runId: state.run_id,
+      attempt,
+      runDir: this.opts.paths.runDir,
+      cwd: this.opts.cwd,
+      config: this.opts.config,
+    });
+    const userMessage  = buildUserMessage(stage, task, attempt);
 
     this.logger.log('agent_call_start', { run_id: state.run_id, stage, attempt: state.attempt + 1 });
 
@@ -324,12 +341,73 @@ function stageToEnterStatus(stage: Stage): RunState['status'] {
   }
 }
 
-function buildSystemPrompt(stage: Stage): string {
+interface SystemPromptContext {
+  stage: Stage;
+  agentName: string;
+  runId: string;
+  attempt: number;
+  runDir: string;
+  cwd: string;
+  config: HarnessConfig;
+}
+
+function buildSystemPrompt(ctx: SystemPromptContext): string {
+  const { stage, agentName, runId, attempt, runDir, cwd, config } = ctx;
+  const artifactName = STAGE_TO_ARTIFACT[stage];
+  const outputPath = path.join(runDir, artifactName);
+  const globalRulesPath = path.join(cwd, '.codex', 'global-rules.md');
+  const agentsMdPath = path.join(cwd, 'AGENTS.md');
+
+  const inputArtifacts: string[] = [];
+  if (stage === 'implementing') {
+    inputArtifacts.push(path.join(runDir, 'plan.md'));
+  }
+  if (stage === 'testing') {
+    inputArtifacts.push(path.join(runDir, 'plan.md'));
+    inputArtifacts.push(path.join(runDir, 'implementation.md'));
+  }
+  if (stage === 'reviewing') {
+    inputArtifacts.push(path.join(runDir, 'plan.md'));
+    inputArtifacts.push(path.join(runDir, 'implementation.md'));
+    inputArtifacts.push(path.join(runDir, 'test-results.md'));
+  }
+
+  const basePrompt = [
+    `You are the ${agentName} agent for Laravel Harness V2.`,
+    '',
+    'Conductor context:',
+    `- Stage: ${stage}`,
+    `- Selected agent: ${agentName}`,
+    `- Run ID: ${runId}`,
+    `- Attempt: ${attempt}`,
+    `- Run directory: ${runDir}`,
+    `- Expected output artifact: ${outputPath}`,
+    '',
+    'Required reading:',
+    `- ${globalRulesPath}`,
+    agentsMdPath ? `- ${agentsMdPath}` : '',
+    '',
+    inputArtifacts.length > 0
+      ? 'Required input artifacts:\n' + inputArtifacts.map((p) => `- ${p}`).join('\n')
+      : '',
+    '',
+    'Return your stage artifact as the final Markdown response. The harness will write it to the run directory.',
+  ];
+
+  const roleSpecific = getRoleSpecificInstructions(stage);
+
+  const override = config.agents[agentName as keyof HarnessConfig['agents']]?.system_prompt_override;
+  if (override) {
+    basePrompt.push('', 'Task-specific guidance:', override);
+  }
+
+  return [...basePrompt, '', roleSpecific].filter(Boolean).join('\n');
+}
+
+function getRoleSpecificInstructions(stage: Stage): string {
   switch (stage) {
     case 'planning':
       return [
-        'You are the planner agent for Laravel Harness V2.',
-        '',
         'Produce a structured plan in Markdown with exactly these sections in this order:',
         '',
         '## Ask',
@@ -358,22 +436,19 @@ function buildSystemPrompt(stage: Stage): string {
 
     case 'implementing':
       return [
-        'You are the implementer agent for Laravel Harness V2.',
-        'Read the plan (plan.md) carefully and apply the smallest safe patch that satisfies all acceptance criteria.',
+        'Read the plan carefully and apply the smallest safe patch that satisfies all acceptance criteria.',
         'Check git status before editing. Do not touch unrelated dirty files.',
         'Write a brief implementation summary when done.',
       ].join('\n');
 
     case 'testing':
       return [
-        'You are the tester agent for Laravel Harness V2.',
         'Run the tests specified in the plan\'s Test Strategy section.',
         'Report pass/fail with exact command output. Classify any failures clearly.',
       ].join('\n');
 
     case 'reviewing':
       return [
-        'You are the reviewer agent for Laravel Harness V2.',
         'Review the implementation and test results against the plan\'s Acceptance Criteria.',
         'Either output "✅ APPROVED" with a brief rationale, or "❌ REJECTED" with specific, actionable feedback.',
       ].join('\n');
