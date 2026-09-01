@@ -33,7 +33,7 @@ This project helps you:
 ## Suggested Repository Structure
 
 ```text
-codex-laravel-harness/
+largentic/
 ├── .codex/
 │   ├── config.toml
 │   └── agents/
