@@ -1,6 +1,6 @@
 # Architecture
 
-Codex Laravel Harness is a file-based multi-agent workflow for Laravel projects.
+It is a file-based multi-agent workflow for Laravel projects.
 
 ## Core Flow
 
