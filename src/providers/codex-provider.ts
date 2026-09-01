@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import type { AgentProvider, AgentRequest, AgentResult, FailureClassification } from '../types.js';
 import type { CodexLiveEvent } from '../ui/progress-reporter.js';
+import { HARNESS_NAME } from '../constants.js';
 
 export type CodexEventCallback = (event: CodexLiveEvent) => void;
 
@@ -232,7 +233,7 @@ export class CodexProvider implements AgentProvider {
       'Context files:',
       contextFiles,
       '',
-      'Return a single final Markdown message suitable for the Laravel Harness stage artifact.',
+      `Return a single final Markdown message suitable for the ${HARNESS_NAME} stage artifact.`,
     ].join('\n');
   }
 

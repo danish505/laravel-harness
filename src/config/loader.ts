@@ -4,6 +4,7 @@ import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { HarnessConfig } from '../types.js';
+import { HARNESS_DIR_NAME } from '../constants.js';
 
 const CONFIG_DEFAULTS: HarnessConfig = {
   version: 2,
@@ -128,5 +129,5 @@ function deepMerge(
 }
 
 export function findConfigPath(cwd: string): string {
-  return path.join(cwd, '.laravel-harness', 'config.yaml');
+  return path.join(cwd, HARNESS_DIR_NAME, 'config.yaml');
 }

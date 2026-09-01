@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import { RunManager } from '../../engine/run-manager.js';
 import { StateStore } from '../../state/state-store.js';
 import { EventLogger } from '../../telemetry/event-logger.js';
+import { HARNESS_NAME_WITH_VERSION } from '../../constants.js';
 
 export function reportCommand(runId: string, cwd: string): void {
   const manager = new RunManager(cwd);
@@ -26,7 +27,7 @@ export function reportCommand(runId: string, cwd: string): void {
       .map((f) => `  - ${f}`);
 
     const report = [
-      `# Laravel Harness V2 — Run Report`,
+      `# ${HARNESS_NAME_WITH_VERSION} — Run Report`,
       ``,
       `**Run ID:** ${runId}`,
       `**Task:** ${manifest.task}`,

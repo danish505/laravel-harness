@@ -31,7 +31,7 @@ describe('WorkflowEngine — integration', () => {
   beforeEach(() => {
     tmpDir = makeTmpDir();
     // Write minimal config
-    const harnessDir = path.join(tmpDir, '.laravel-harness');
+    const harnessDir = path.join(tmpDir, '.largentic');
     fs.mkdirSync(harnessDir, { recursive: true });
     fs.writeFileSync(path.join(harnessDir, 'config.yaml'), yaml.dump({ version: 2 }));
   });

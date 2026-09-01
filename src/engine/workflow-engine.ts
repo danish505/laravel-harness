@@ -18,6 +18,7 @@ import {
 } from './state-machine.js';
 import type { RunPaths } from './run-manager.js';
 import type { ProgressReporter } from '../ui/progress-reporter.js';
+import { HARNESS_NAME_WITH_VERSION } from '../constants.js';
 
 export interface WorkflowEngineOptions {
   config: HarnessConfig;
@@ -373,7 +374,7 @@ function buildSystemPrompt(ctx: SystemPromptContext): string {
   }
 
   const basePrompt = [
-    `You are the ${agentName} agent for Laravel Harness V2.`,
+    `You are the ${agentName} agent for ${HARNESS_NAME_WITH_VERSION}.`,
     '',
     'Conductor context:',
     `- Stage: ${stage}`,

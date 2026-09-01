@@ -12,6 +12,7 @@ import { statusToExitCode } from '../exit-codes.js';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HARNESS_DIR_NAME, HARNESS_NAME_WITH_VERSION } from '../../constants.js';
 
 export async function runCommand(
   task: string | undefined,
@@ -80,7 +81,7 @@ export async function runCommand(
     gitCommit,
   });
 
-  console.log(`\n🚀 Laravel Harness V2`);
+  console.log(`\n🚀 ${HARNESS_NAME_WITH_VERSION}`);
   console.log(`   Run ID : ${runId}`);
   console.log(`   Task   : ${resolvedTask}`);
   console.log(`   Profile: ${config.profile}`);
@@ -123,23 +124,23 @@ function resolveTask(inline: string | undefined, cwd: string): string | null {
     return inline.trim();
   }
 
-  const taskFile = path.join(cwd, '.laravel-harness', 'task.md');
+  const taskFile = path.join(cwd, HARNESS_DIR_NAME, 'task.md');
   if (!fs.existsSync(taskFile)) {
-    console.error('❌ No task provided and .laravel-harness/task.md does not exist.');
+    console.error(`❌ No task provided and ${HARNESS_DIR_NAME}/task.md does not exist.`);
     console.error('   Either run: lh run "your task"');
-    console.error('   Or create:  .laravel-harness/task.md with your task description.');
+    console.error(`   Or create:  ${HARNESS_DIR_NAME}/task.md with your task description.`);
     process.exitCode = 5;
     return null;
   }
 
   const content = fs.readFileSync(taskFile, 'utf8').trim();
   if (!content) {
-    console.error('❌ .laravel-harness/task.md is empty. Add your task description to it.');
+    console.error(`❌ ${HARNESS_DIR_NAME}/task.md is empty. Add your task description to it.`);
     process.exitCode = 5;
     return null;
   }
 
-  console.log(`📄 Using task from .laravel-harness/task.md`);
+  console.log(`📄 Using task from ${HARNESS_DIR_NAME}/task.md`);
   return content;
 }
 

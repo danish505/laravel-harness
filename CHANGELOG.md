@@ -2,7 +2,7 @@
 
 ## 2.0.0
 
-Major release of the Laravel Harness with a full file-based SDLC workflow.
+Major release of Largentic with a full file-based SDLC workflow.
 
 ### Added
 

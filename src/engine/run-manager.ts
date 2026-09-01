@@ -3,6 +3,7 @@ import * as path from 'path';
 import { ulid } from 'ulid';
 import type { RunManifest } from '../types.js';
 import { StateStore } from '../state/state-store.js';
+import { HARNESS_DIR_NAME } from '../constants.js';
 
 const SCHEMA_VERSION = '2.0' as const;
 
@@ -18,7 +19,7 @@ export class RunManager {
   private baseDir: string;
 
   constructor(cwd: string) {
-    this.baseDir = path.join(cwd, '.laravel-harness', 'runs');
+    this.baseDir = path.join(cwd, HARNESS_DIR_NAME, 'runs');
   }
 
   create(task: string, options: { profile: string; provider: string; gitBranch?: string; gitCommit?: string }): { runId: string; paths: RunPaths; manifest: RunManifest } {

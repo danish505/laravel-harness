@@ -10,7 +10,7 @@ function makeTmpDir(): string {
 }
 
 function writeConfig(dir: string, content: object): string {
-  const harnessDir = path.join(dir, '.laravel-harness');
+  const harnessDir = path.join(dir, '.largentic');
   fs.mkdirSync(harnessDir, { recursive: true });
   const configPath = path.join(harnessDir, 'config.yaml');
   fs.writeFileSync(configPath, yaml.dump(content), 'utf8');
@@ -24,7 +24,7 @@ describe('config loader', () => {
   afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   it('returns defaults when config file does not exist', () => {
-    const missing = path.join(tmpDir, '.laravel-harness', 'config.yaml');
+    const missing = path.join(tmpDir, '.largentic', 'config.yaml');
     const { config, valid } = loadConfig(missing);
     expect(valid).toBe(false);
     expect(config.workflow.max_attempts).toBe(3);

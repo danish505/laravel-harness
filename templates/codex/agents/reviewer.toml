@@ -1,5 +1,5 @@
 name = "reviewer"
-description = "Reviews the diff, test results, conventions, and approval state for the current Laravel Harness V2 run."
+description = "Reviews the diff, test results, conventions, and approval state for the current Largentic V2 run."
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = '''
