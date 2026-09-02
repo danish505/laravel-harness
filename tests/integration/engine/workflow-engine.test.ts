@@ -5,9 +5,17 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { RunManager } from '../../../src/engine/run-manager.js';
 import { WorkflowEngine } from '../../../src/engine/workflow-engine.js';
+import { ApprovalGate } from '../../../src/engine/approval-gate.js';
 import { FakeProvider } from '../../../src/providers/fake-provider.js';
 import { StateStore } from '../../../src/state/state-store.js';
-import type { HarnessConfig, AgentResult } from '../../../src/types.js';
+import type { HarnessConfig, AgentResult, ApprovalDecision } from '../../../src/types.js';
+
+function makeGate(decisions: ApprovalDecision[]): ApprovalGate {
+  let index = 0;
+  return {
+    requestApproval: async () => decisions[index++] ?? 'cancelled',
+  } as ApprovalGate;
+}
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'lh-workflow-test-'));
@@ -289,5 +297,98 @@ describe('WorkflowEngine — integration', () => {
     expect(reviewing).toBeDefined();
     expect(reviewing!.systemPrompt).toContain('Selected agent: reviewer');
     expect(reviewing!.systemPrompt).toContain(path.join(paths.runDir, 'test-results.md'));
+  });
+
+  it('exports the plan to the default directory and then approves', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Export then approve', { profile: 'generic', provider: 'fake' });
+
+    const config = defaultConfig();
+    config.workflow.plan_approval = 'required';
+
+    const engine = new WorkflowEngine({
+      config,
+      provider: new FakeProvider(),
+      runId,
+      paths,
+      task: 'Export then approve',
+      cwd: tmpDir,
+      approvalGate: makeGate(['exported', 'approved']),
+    });
+
+    const finalState = await engine.run();
+    expect(finalState.status).toBe('approved');
+
+    const exportPath = path.join(tmpDir, '.largentic', 'exports', `plan-${runId}.md`);
+    expect(fs.existsSync(exportPath)).toBe(true);
+    expect(fs.readFileSync(exportPath, 'utf8')).toBe(fs.readFileSync(path.join(paths.runDir, 'plan.md'), 'utf8'));
+  });
+
+  it('exports the plan to a configured directory', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Export to custom dir', { profile: 'generic', provider: 'fake' });
+
+    const config = defaultConfig();
+    config.workflow.plan_approval = 'required';
+    config.workflow.plan_export_directory = 'docs/plans';
+
+    const engine = new WorkflowEngine({
+      config,
+      provider: new FakeProvider(),
+      runId,
+      paths,
+      task: 'Export to custom dir',
+      cwd: tmpDir,
+      approvalGate: makeGate(['exported', 'approved']),
+    });
+
+    await engine.run();
+
+    const exportPath = path.join(tmpDir, 'docs', 'plans', `plan-${runId}.md`);
+    expect(fs.existsSync(exportPath)).toBe(true);
+  });
+
+  it('does not advance state when export fails', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Export failure', { profile: 'generic', provider: 'fake' });
+
+    const config = defaultConfig();
+    config.workflow.plan_approval = 'required';
+    config.workflow.plan_export_directory = path.join(paths.runDir, 'plan.md'); // file, not directory
+
+    const engine = new WorkflowEngine({
+      config,
+      provider: new FakeProvider(),
+      runId,
+      paths,
+      task: 'Export failure',
+      cwd: tmpDir,
+      approvalGate: makeGate(['exported', 'approved']),
+    });
+
+    const finalState = await engine.run();
+    expect(finalState.status).toBe('approved');
+  });
+
+  it('cancels the run when plan is rejected after export', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Export then reject', { profile: 'generic', provider: 'fake' });
+
+    const config = defaultConfig();
+    config.workflow.plan_approval = 'required';
+
+    const engine = new WorkflowEngine({
+      config,
+      provider: new FakeProvider(),
+      runId,
+      paths,
+      task: 'Export then reject',
+      cwd: tmpDir,
+      approvalGate: makeGate(['exported', 'rejected']),
+    });
+
+    const finalState = await engine.run();
+    expect(finalState.status).toBe('cancelled');
+    expect(finalState.failure_reason).toBe('Plan rejected by user');
   });
 });

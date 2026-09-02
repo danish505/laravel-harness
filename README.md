@@ -244,8 +244,11 @@ lh run "task"
     │
     ▼
 [planner]  → .largentic/runs/<run-id>/plan.md  → human approval (if required)
-    │
-    ▼
+    │                      │
+    │                      ▼
+    │            export plan → .largentic/exports/plan-<run-id>.md
+    │                      │
+    ▼                      ▼
 [implementer] → .largentic/runs/<run-id>/implementation.md
     │
     ▼
@@ -257,6 +260,26 @@ lh run "task"
     ▼
  APPROVED ✅  (or FAILED / CANCELLED)
 ```
+
+### Exporting the plan
+
+When `workflow.plan_approval` is `required`, the plan approval prompt offers:
+
+- `[a]pprove` — continue to implementation
+- `[r]eject` — cancel the run
+- `[e]xport` — save the plan as Markdown and return to the prompt
+- `[c]ancel` — cancel the run
+
+Exporting writes the generated plan to `.largentic/exports/plan-<run-id>.md` by default. It does **not** approve the plan or start implementation; after exporting you remain at the approval prompt to make a final decision.
+
+You can change the export directory in `.largentic/config.yaml`:
+
+```yaml
+workflow:
+  plan_export_directory: docs/plans
+```
+
+Relative paths resolve from the project working directory; absolute paths are used as supplied.
 
 The harness uses the native Codex agents registered in `.codex/agents/*.toml`. Each stage prompt tells the selected agent its run ID, attempt, run directory, required input artifacts, and the path to `.codex/global-rules.md`. Every state transition is written atomically to `.largentic/runs/<run-id>/state.json` and appended to `events.jsonl` — making runs fully inspectable and resumable.
 

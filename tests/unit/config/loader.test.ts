@@ -46,6 +46,27 @@ describe('config loader', () => {
     expect(valid).toBe(true);
     expect(config.workflow.max_attempts).toBe(5);
     expect(config.workflow.plan_approval).toBe('required'); // default preserved
+    expect(config.workflow.plan_export_directory).toBe('.largentic/exports');
+  });
+
+  it('accepts a custom plan_export_directory', () => {
+    const configPath = writeConfig(tmpDir, {
+      version: 2,
+      workflow: { plan_export_directory: 'docs/plans' },
+    });
+    const { config, valid } = loadConfig(configPath);
+    expect(valid).toBe(true);
+    expect(config.workflow.plan_export_directory).toBe('docs/plans');
+  });
+
+  it('rejects an empty plan_export_directory', () => {
+    const configPath = writeConfig(tmpDir, {
+      version: 2,
+      workflow: { plan_export_directory: '' },
+    });
+    const { valid, errors } = loadConfig(configPath);
+    expect(valid).toBe(false);
+    expect(errors.some((e) => e.includes('plan_export_directory'))).toBe(true);
   });
 
   it('rejects config with wrong version', () => {
