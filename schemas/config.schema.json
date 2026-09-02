@@ -39,6 +39,12 @@
           "enum": ["required", "automatic"],
           "default": "automatic",
           "description": "Whether a human must approve the final review."
+        },
+        "plan_export_directory": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".largentic/exports",
+          "description": "Directory where the plan can be exported as a Markdown file during plan approval. Relative paths resolve from the project working directory."
         }
       }
     },

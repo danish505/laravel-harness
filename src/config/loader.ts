@@ -13,6 +13,7 @@ const CONFIG_DEFAULTS: HarnessConfig = {
     max_attempts: 3,
     plan_approval: 'required',
     review_approval: 'automatic',
+    plan_export_directory: '.largentic/exports',
   },
   agents: {},
   quality_gates: {

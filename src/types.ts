@@ -77,6 +77,7 @@ export interface HarnessConfig {
     max_attempts: number;
     plan_approval: 'required' | 'automatic';
     review_approval: 'required' | 'automatic';
+    plan_export_directory?: string;
   };
   agents: {
     planner?: AgentConfig;
@@ -133,7 +134,7 @@ export interface GateResult {
   message: string;
 }
 
-export type ApprovalDecision = 'approved' | 'rejected' | 'cancelled';
+export type ApprovalDecision = 'approved' | 'rejected' | 'cancelled' | 'exported';
 
 export interface AgentProvider {
   execute(request: AgentRequest): Promise<AgentResult>;

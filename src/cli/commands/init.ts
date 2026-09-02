@@ -26,6 +26,7 @@ workflow:
   max_attempts: 3
   plan_approval: required     # required | automatic
   review_approval: automatic  # required | automatic
+  plan_export_directory: .largentic/exports  # directory for exported plan.md files
 
 agents:
   planner:

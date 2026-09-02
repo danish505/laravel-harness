@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import type {
   AgentProvider,
+  ApprovalDecision,
   HarnessConfig,
   Stage,
   StageResult,
@@ -31,6 +32,8 @@ export interface WorkflowEngineOptions {
   autoApprove?: boolean;
   /** Optional live progress reporter — omit for silent/test mode. */
   reporter?: ProgressReporter;
+  /** Optional approval gate override. Used in tests. */
+  approvalGate?: ApprovalGate;
 }
 
 const STAGE_ORDER: Stage[] = ['planning', 'implementing', 'testing', 'reviewing'];
@@ -61,7 +64,7 @@ export class WorkflowEngine {
     this.store  = new StateStore(opts.paths.runDir);
     this.lock   = new RunLock(opts.paths.runDir);
     this.logger = new EventLogger(opts.paths.eventsFile);
-    this.gate   = new ApprovalGate();
+    this.gate   = opts.approvalGate ?? new ApprovalGate();
   }
 
   async run(): Promise<RunState> {
@@ -101,8 +104,22 @@ export class WorkflowEngine {
           process.stdout.write(`\n  ✋ Plan requires approval.\n`);
           process.stdout.write(`Plan:\n${'─'.repeat(60)}\n${plan}\n${'─'.repeat(60)}\n`);
         }
-        const decision = await this.gate.requestApproval('');
-        this.logger.approvalDecision(runId, decision, 'human');
+
+        let decision: ApprovalDecision;
+        while (true) {
+          decision = await this.gate.requestApproval('');
+          this.logger.approvalDecision(runId, decision, 'human');
+
+          if (decision === 'exported') {
+            const exported = await this.exportPlan(plan);
+            if (exported) {
+              process.stdout.write(`  ✓ Plan exported to ${exported}\n`);
+            }
+            continue;
+          }
+
+          break;
+        }
 
         if (decision !== 'approved') {
           state = this.store.transition('cancelled', { actor: 'human', failureReason: decision === 'rejected' ? 'Plan rejected by user' : 'User cancelled' });
@@ -311,6 +328,24 @@ export class WorkflowEngine {
   private readArtifact(filename: string): string {
     const p = path.join(this.opts.paths.runDir, filename);
     return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '(not found)';
+  }
+
+  private exportPlan(plan: string): string | null {
+    const exportDirSetting = this.opts.config.workflow.plan_export_directory ?? '.largentic/exports';
+    const exportDir = path.isAbsolute(exportDirSetting)
+      ? exportDirSetting
+      : path.join(this.opts.cwd, exportDirSetting);
+    const exportPath = path.join(exportDir, `plan-${this.opts.runId}.md`);
+
+    try {
+      fs.mkdirSync(exportDir, { recursive: true });
+      fs.writeFileSync(exportPath, plan, 'utf8');
+      return exportPath;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      process.stdout.write(`  ✗ Failed to export plan to ${exportPath}: ${msg}\n`);
+      return null;
+    }
   }
 
   private resolveStartStage(state: RunState): Stage {
