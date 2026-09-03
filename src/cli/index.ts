@@ -45,8 +45,9 @@ program
   .description(`Run the full four-stage workflow. Pass the task inline or define it in ${HARNESS_DIR_NAME}/task.md`)
   .option('--auto-approve', 'Skip interactive approval prompts (for scripting)')
   .option('--provider <name>', 'Override provider (codex | fake)')
-  .action(async (task: string | undefined, opts: { autoApprove?: boolean; provider?: string }) => {
-    await runCommand(task, cwd, { autoApprove: opts.autoApprove, provider: opts.provider });
+  .option('--plan-file <path>', 'Path to a predefined plan file to jump directly to implementation')
+  .action(async (task: string | undefined, opts: { autoApprove?: boolean; provider?: string; planFile?: string }) => {
+    await runCommand(task, cwd, { autoApprove: opts.autoApprove, provider: opts.provider, planFile: opts.planFile });
   });
 
 program

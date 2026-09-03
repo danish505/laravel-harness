@@ -3,9 +3,9 @@ import type { RunStatus } from '../types.js';
 type TransitionMap = Partial<Record<RunStatus, RunStatus[]>>;
 
 const TRANSITIONS: TransitionMap = {
-  created:                 ['planning', 'cancelled'],
+  created:                 ['planning', 'implementing', 'cancelled'],
   planning:                ['awaiting_plan_approval', 'blocked', 'failed', 'cancelled'],
-  awaiting_plan_approval:  ['implementing', 'cancelled'],
+  awaiting_plan_approval:  ['implementing', 'planning', 'cancelled'],
   implementing:            ['testing', 'blocked', 'failed', 'cancelled'],
   testing:                 ['reviewing', 'testing_failed', 'failed', 'cancelled'],
   testing_failed:          ['implementing', 'failed', 'cancelled'],

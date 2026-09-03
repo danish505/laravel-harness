@@ -134,7 +134,7 @@ export interface GateResult {
   message: string;
 }
 
-export type ApprovalDecision = 'approved' | 'rejected' | 'cancelled' | 'exported';
+export type ApprovalDecision = 'approved' | 'rejected' | 'cancelled' | 'exported' | 'update';
 
 export interface AgentProvider {
   execute(request: AgentRequest): Promise<AgentResult>;

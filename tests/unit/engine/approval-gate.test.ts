@@ -37,6 +37,16 @@ describe('ApprovalGate', () => {
     await expect(gate.requestApproval('')).resolves.toBe('rejected');
   });
 
+  it('resolves updated for "u" and "update"', async () => {
+    const gate = new ApprovalGate();
+
+    mockAnswers(['u']);
+    await expect(gate.requestApproval('')).resolves.toBe('update');
+
+    mockAnswers(['update']);
+    await expect(gate.requestApproval('')).resolves.toBe('update');
+  });
+
   it('resolves exported for "e" and "export"', async () => {
     const gate = new ApprovalGate();
 
@@ -62,5 +72,14 @@ describe('ApprovalGate', () => {
     mockAnswers(['x', 'maybe', 'a']);
 
     await expect(gate.requestApproval('')).resolves.toBe('approved');
+  });
+
+  describe('requestPlanUpdate', () => {
+    it('returns trimmed input answers', async () => {
+      const gate = new ApprovalGate();
+      mockAnswers(['  Some additional notes.   ']);
+
+      await expect(gate.requestPlanUpdate()).resolves.toBe('Some additional notes.');
+    });
   });
 });

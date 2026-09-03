@@ -132,6 +132,16 @@ Or create `.largentic/task.md` and run:
 lh run
 ```
 
+### Skipping to Implementation with a Predefined Plan
+
+If you already have a plan file and want to jump directly to the implementation stage:
+
+```bash
+lh run "Add rate limiting to the login endpoint" --plan-file .largentic/exports/plan-XXXX.md
+```
+
+The plan file **must** exist and be located inside the configured plan export directory (by default `.largentic/exports`).
+
 ## Workflow
 
 ```text
@@ -267,6 +277,7 @@ When `workflow.plan_approval` is `required`, the plan approval prompt offers:
 
 - `[a]pprove` — continue to implementation
 - `[r]eject` — cancel the run
+- `[u]pdate` — provide additional details or changes to re-run the planner agent and revise the plan
 - `[e]xport` — save the plan as Markdown and return to the prompt
 - `[c]ancel` — cancel the run
 

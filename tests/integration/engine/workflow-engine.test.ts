@@ -10,10 +10,12 @@ import { FakeProvider } from '../../../src/providers/fake-provider.js';
 import { StateStore } from '../../../src/state/state-store.js';
 import type { HarnessConfig, AgentResult, ApprovalDecision } from '../../../src/types.js';
 
-function makeGate(decisions: ApprovalDecision[]): ApprovalGate {
+function makeGate(decisions: ApprovalDecision[], updateNotes: string[] = []): ApprovalGate {
   let index = 0;
+  let updateIndex = 0;
   return {
     requestApproval: async () => decisions[index++] ?? 'cancelled',
+    requestPlanUpdate: async () => updateNotes[updateIndex++] ?? 'Test update notes',
   } as ApprovalGate;
 }
 
@@ -390,5 +392,90 @@ describe('WorkflowEngine — integration', () => {
     const finalState = await engine.run();
     expect(finalState.status).toBe('cancelled');
     expect(finalState.failure_reason).toBe('Plan rejected by user');
+  });
+
+  it('allows updating plan and re-invoking planner before approving', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Add update test', {
+      profile: 'generic',
+      provider: 'fake',
+    });
+
+    const config = defaultConfig();
+    config.workflow.plan_approval = 'required';
+
+    const provider = new FakeProvider();
+    const calls: any[] = [];
+    const originalExecute = provider.execute.bind(provider);
+    provider.execute = async (req) => {
+      calls.push(req);
+      return originalExecute(req);
+    };
+
+    // First, user updates, then user approves
+    const gate = makeGate(['update', 'approved'], ['My custom note to planner']);
+
+    const engine = new WorkflowEngine({
+      config,
+      provider,
+      runId,
+      paths,
+      task: 'Add update test',
+      cwd: tmpDir,
+      approvalGate: gate,
+    });
+
+    const finalState = await engine.run();
+    expect(finalState.status).toBe('approved');
+
+    // Planning should have been called TWICE
+    const planningCalls = calls.filter((c) => c.stage === 'planning');
+    expect(planningCalls.length).toBe(2);
+
+    // First call shouldn't have previousPlan/planUpdateNotes since it's initial planning
+    expect(planningCalls[0].systemPrompt).not.toContain('REVISION REQUEST');
+
+    // Second call should have previousPlan/planUpdateNotes
+    expect(planningCalls[1].systemPrompt).toContain('REVISION REQUEST');
+    expect(planningCalls[1].userMessage).toContain('My custom note to planner');
+    expect(planningCalls[1].userMessage).toContain('Previous Plan:');
+  });
+
+  it('skips planning stage and starts from implementing when initialPlan is provided', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Direct implement test', { profile: 'generic', provider: 'fake' });
+
+    const provider = new FakeProvider();
+    const callLog: string[] = [];
+    const originalExecute = provider.execute.bind(provider);
+    provider.execute = async (req) => {
+      callLog.push(req.stage);
+      return originalExecute(req);
+    };
+
+    const initialPlanText = '## Predefined Plan\n\nCustom instruction details';
+
+    const engine = new WorkflowEngine({
+      config: defaultConfig(),
+      provider,
+      runId,
+      paths,
+      task: 'Direct implement test',
+      cwd: tmpDir,
+      autoApprove: true,
+      initialPlan: initialPlanText,
+    });
+
+    const finalState = await engine.run();
+    expect(finalState.status).toBe('approved');
+
+    // Planning should NOT have been called via provider
+    expect(callLog).not.toContain('planning');
+    expect(callLog).toContain('implementing');
+
+    // plan.md artifact must have been written with the custom plan text
+    const planPath = path.join(paths.runDir, 'plan.md');
+    expect(fs.existsSync(planPath)).toBe(true);
+    expect(fs.readFileSync(planPath, 'utf8')).toBe(initialPlanText);
   });
 });

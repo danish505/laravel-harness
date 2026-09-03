@@ -11,8 +11,8 @@ export class ApprovalGate {
     });
 
     const baseQuestion = prompt
-      ? `\n${prompt}\n  [a]pprove / [r]eject / [e]xport / [c]ancel: `
-      : '  [a]pprove / [r]eject / [e]xport / [c]ancel: ';
+      ? `\n${prompt}\n  [a]pprove / [r]eject / [u]pdate / [e]xport / [c]ancel: `
+      : '  [a]pprove / [r]eject / [u]pdate / [e]xport / [c]ancel: ';
 
     return new Promise((resolve) => {
       const ask = (question: string): void => {
@@ -24,6 +24,9 @@ export class ApprovalGate {
           } else if (a === 'r' || a === 'reject') {
             rl.close();
             resolve('rejected');
+          } else if (a === 'u' || a === 'update') {
+            rl.close();
+            resolve('update');
           } else if (a === 'e' || a === 'export') {
             rl.close();
             resolve('exported');
@@ -31,13 +34,27 @@ export class ApprovalGate {
             rl.close();
             resolve('cancelled');
           } else {
-            process.stdout.write('  Invalid choice. Please enter a, r, e, or c.\n');
-            ask('  [a]pprove / [r]eject / [e]xport / [c]ancel: ');
+            process.stdout.write('  Invalid choice. Please enter a, r, u, e, or c.\n');
+            ask('  [a]pprove / [r]eject / [u]pdate / [e]xport / [c]ancel: ');
           }
         });
       };
 
       ask(baseQuestion);
+    });
+  }
+
+  async requestPlanUpdate(): Promise<string> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+      rl.question('  Provide additional details / changes for the plan: ', (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
     });
   }
 }
