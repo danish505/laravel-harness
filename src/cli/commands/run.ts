@@ -17,7 +17,7 @@ import { HARNESS_DIR_NAME, HARNESS_NAME_WITH_VERSION } from '../../constants.js'
 export async function runCommand(
   task: string | undefined,
   cwd: string,
-  options: { autoApprove?: boolean; provider?: string } = {}
+  options: { autoApprove?: boolean; provider?: string; planFile?: string } = {}
 ): Promise<void> {
   const resolvedTask = resolveTask(task, cwd);
   if (!resolvedTask) {
@@ -31,6 +31,36 @@ export async function runCommand(
     console.error('  Run "lh init" or "lh config validate" for details.');
     process.exitCode = 5;
     return;
+  }
+
+  let initialPlan: string | undefined;
+  if (options.planFile) {
+    const resolvedPlanPath = path.resolve(cwd, options.planFile);
+    if (!fs.existsSync(resolvedPlanPath)) {
+      console.error(`❌ Plan file not found: ${options.planFile}`);
+      process.exitCode = 5;
+      return;
+    }
+
+    const allowedDirSetting = config.workflow.plan_export_directory ?? '.largentic/exports';
+    const allowedDir = path.resolve(cwd, allowedDirSetting);
+    const relative = path.relative(allowedDir, resolvedPlanPath);
+    const isInside = !relative.startsWith('..') && !path.isAbsolute(relative);
+
+    if (!isInside) {
+      console.error(`❌ Plan file must be inside the configured plan export directory: ${allowedDirSetting}`);
+      process.exitCode = 5;
+      return;
+    }
+
+    try {
+      initialPlan = fs.readFileSync(resolvedPlanPath, 'utf8');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`❌ Failed to read plan file: ${msg}`);
+      process.exitCode = 5;
+      return;
+    }
   }
 
   const providerName = resolveProviderName(config.provider, options.provider);
@@ -99,6 +129,7 @@ export async function runCommand(
     cwd,
     autoApprove: options.autoApprove,
     reporter,
+    initialPlan,
   });
 
   const finalState = await engine.run();

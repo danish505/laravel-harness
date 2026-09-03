@@ -13,6 +13,10 @@ describe('state-machine', () => {
       expect(isValidTransition('created', 'planning')).toBe(true);
     });
 
+    it('allows created → implementing', () => {
+      expect(isValidTransition('created', 'implementing')).toBe(true);
+    });
+
     it('allows planning → awaiting_plan_approval', () => {
       expect(isValidTransition('planning', 'awaiting_plan_approval')).toBe(true);
     });

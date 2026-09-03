@@ -34,6 +34,8 @@ export interface WorkflowEngineOptions {
   reporter?: ProgressReporter;
   /** Optional approval gate override. Used in tests. */
   approvalGate?: ApprovalGate;
+  /** Optional initial plan text to skip planning stage. */
+  initialPlan?: string;
 }
 
 const STAGE_ORDER: Stage[] = ['planning', 'implementing', 'testing', 'reviewing'];
@@ -79,6 +81,29 @@ export class WorkflowEngine {
   private async execute(): Promise<RunState> {
     const { config, provider, runId, task } = this.opts;
     let state = this.store.read();
+
+    if (this.opts.initialPlan && state.status === 'created') {
+      const planResult: StageResult = {
+        schema_version: '2.0',
+        run_id: runId,
+        attempt: state.attempt + 1,
+        stage: 'planning',
+        status: 'success',
+        agent_id: 'human',
+        provider: 'manual',
+        input_hashes: {},
+        output_files: [],
+        summary: 'Injected plan from file',
+        content: this.opts.initialPlan,
+        next_action: 'advance',
+        failure_classification: null,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      this.writeArtifact('planning', state, planResult);
+      state = this.store.transition('implementing', { actor: 'human' });
+    }
 
     // ── Planning ──────────────────────────────────────────────────────────────
     if (!['implementing', 'testing', 'testing_failed', 'reviewing', 'review_rejected'].includes(state.status)) {

@@ -440,4 +440,42 @@ describe('WorkflowEngine — integration', () => {
     expect(planningCalls[1].userMessage).toContain('My custom note to planner');
     expect(planningCalls[1].userMessage).toContain('Previous Plan:');
   });
+
+  it('skips planning stage and starts from implementing when initialPlan is provided', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('Direct implement test', { profile: 'generic', provider: 'fake' });
+
+    const provider = new FakeProvider();
+    const callLog: string[] = [];
+    const originalExecute = provider.execute.bind(provider);
+    provider.execute = async (req) => {
+      callLog.push(req.stage);
+      return originalExecute(req);
+    };
+
+    const initialPlanText = '## Predefined Plan\n\nCustom instruction details';
+
+    const engine = new WorkflowEngine({
+      config: defaultConfig(),
+      provider,
+      runId,
+      paths,
+      task: 'Direct implement test',
+      cwd: tmpDir,
+      autoApprove: true,
+      initialPlan: initialPlanText,
+    });
+
+    const finalState = await engine.run();
+    expect(finalState.status).toBe('approved');
+
+    // Planning should NOT have been called via provider
+    expect(callLog).not.toContain('planning');
+    expect(callLog).toContain('implementing');
+
+    // plan.md artifact must have been written with the custom plan text
+    const planPath = path.join(paths.runDir, 'plan.md');
+    expect(fs.existsSync(planPath)).toBe(true);
+    expect(fs.readFileSync(planPath, 'utf8')).toBe(initialPlanText);
+  });
 });

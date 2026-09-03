@@ -132,6 +132,16 @@ Or create `.largentic/task.md` and run:
 lh run
 ```
 
+### Skipping to Implementation with a Predefined Plan
+
+If you already have a plan file and want to jump directly to the implementation stage:
+
+```bash
+lh run "Add rate limiting to the login endpoint" --plan-file .largentic/exports/plan-XXXX.md
+```
+
+The plan file **must** exist and be located inside the configured plan export directory (by default `.largentic/exports`).
+
 ## Workflow
 
 ```text
