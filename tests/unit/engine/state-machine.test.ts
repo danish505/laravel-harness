@@ -21,6 +21,10 @@ describe('state-machine', () => {
       expect(isValidTransition('awaiting_plan_approval', 'implementing')).toBe(true);
     });
 
+    it('allows awaiting_plan_approval → planning', () => {
+      expect(isValidTransition('awaiting_plan_approval', 'planning')).toBe(true);
+    });
+
     it('allows testing → testing_failed', () => {
       expect(isValidTransition('testing', 'testing_failed')).toBe(true);
     });

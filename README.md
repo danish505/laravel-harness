@@ -267,6 +267,7 @@ When `workflow.plan_approval` is `required`, the plan approval prompt offers:
 
 - `[a]pprove` — continue to implementation
 - `[r]eject` — cancel the run
+- `[u]pdate` — provide additional details or changes to re-run the planner agent and revise the plan
 - `[e]xport` — save the plan as Markdown and return to the prompt
 - `[c]ancel` — cancel the run
 

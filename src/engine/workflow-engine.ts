@@ -82,50 +82,76 @@ export class WorkflowEngine {
 
     // ── Planning ──────────────────────────────────────────────────────────────
     if (!['implementing', 'testing', 'testing_failed', 'reviewing', 'review_rejected'].includes(state.status)) {
-      state = this.enterStage('planning', state, runId);
-      const planResult = await this.runStage('planning', state, provider, task);
+      let previousPlan: string | undefined;
+      let planUpdateNotes: string | undefined;
 
-      if (planResult.status !== 'success') {
-        state = this.store.transition('failed', { actor: 'planner', failureReason: planResult.failure_classification ?? 'planning failed' });
-        this.logger.termination(runId, 'Planning failed', 'failed');
-        return state;
-      }
+      while (true) {
+        state = this.enterStage('planning', state, runId);
+        const planResult = await this.runStage('planning', state, provider, task, {
+          previousPlan,
+          planUpdateNotes,
+        });
 
-      this.writeArtifact('planning', state, planResult);
-      this.logger.stageComplete(runId, 'planning', state.attempt + 1, planResult.summary);
-      state = this.store.transition('awaiting_plan_approval', { actor: 'planner' });
-
-      if (config.workflow.plan_approval === 'required' && !this.opts.autoApprove) {
-        this.logger.approvalRequest(runId, 'planning');
-        const plan = this.readArtifact(STAGE_TO_ARTIFACT['planning']);
-        if (this.opts.reporter) {
-          this.opts.reporter.approvalBanner(plan);
-        } else {
-          process.stdout.write(`\n  ✋ Plan requires approval.\n`);
-          process.stdout.write(`Plan:\n${'─'.repeat(60)}\n${plan}\n${'─'.repeat(60)}\n`);
+        if (planResult.status !== 'success') {
+          state = this.store.transition('failed', { actor: 'planner', failureReason: planResult.failure_classification ?? 'planning failed' });
+          this.logger.termination(runId, 'Planning failed', 'failed');
+          return state;
         }
 
-        let decision: ApprovalDecision;
-        while (true) {
-          decision = await this.gate.requestApproval('');
-          this.logger.approvalDecision(runId, decision, 'human');
+        this.writeArtifact('planning', state, planResult);
+        this.logger.stageComplete(runId, 'planning', state.attempt + 1, planResult.summary);
+        state = this.store.transition('awaiting_plan_approval', { actor: 'planner' });
 
-          if (decision === 'exported') {
-            const exported = await this.exportPlan(plan);
-            if (exported) {
-              process.stdout.write(`  ✓ Plan exported to ${exported}\n`);
+        if (config.workflow.plan_approval === 'required' && !this.opts.autoApprove) {
+          this.logger.approvalRequest(runId, 'planning');
+          const currentPlan = this.readArtifact(STAGE_TO_ARTIFACT['planning']);
+          if (this.opts.reporter) {
+            this.opts.reporter.approvalBanner(currentPlan);
+          } else {
+            process.stdout.write(`\n  ✋ Plan requires approval.\n`);
+            process.stdout.write(`Plan:\n${'─'.repeat(60)}\n${currentPlan}\n${'─'.repeat(60)}\n`);
+          }
+
+          let decision: ApprovalDecision;
+          let notes: string | undefined;
+          while (true) {
+            decision = await this.gate.requestApproval('');
+            this.logger.approvalDecision(runId, decision, 'human');
+
+            if (decision === 'exported') {
+              const exported = await this.exportPlan(currentPlan);
+              if (exported) {
+                process.stdout.write(`  ✓ Plan exported to ${exported}\n`);
+              }
+              continue;
             }
+
+            if (decision === 'update') {
+              notes = await this.gate.requestPlanUpdate();
+              if (!notes) {
+                process.stdout.write(`  ⚠ No update notes provided. Prompting again...\n`);
+                continue;
+              }
+              break;
+            }
+
+            break;
+          }
+
+          if (decision === 'update') {
+            previousPlan = currentPlan;
+            planUpdateNotes = notes;
             continue;
           }
 
-          break;
+          if (decision !== 'approved') {
+            state = this.store.transition('cancelled', { actor: 'human', failureReason: decision === 'rejected' ? 'Plan rejected by user' : 'User cancelled' });
+            this.logger.termination(runId, `Plan ${decision} by user`, 'cancelled');
+            return state;
+          }
         }
 
-        if (decision !== 'approved') {
-          state = this.store.transition('cancelled', { actor: 'human', failureReason: decision === 'rejected' ? 'Plan rejected by user' : 'User cancelled' });
-          this.logger.termination(runId, `Plan ${decision} by user`, 'cancelled');
-          return state;
-        }
+        break;
       }
 
       state = this.store.transition('implementing', { actor: 'system' });
@@ -226,7 +252,8 @@ export class WorkflowEngine {
     stage: Stage,
     state: RunState,
     provider: AgentProvider,
-    task: string
+    task: string,
+    options?: { previousPlan?: string; planUpdateNotes?: string }
   ): Promise<StageResult> {
     const started_at = new Date().toISOString();
     const attempt = state.attempt + 1;
@@ -239,8 +266,10 @@ export class WorkflowEngine {
       runDir: this.opts.paths.runDir,
       cwd: this.opts.cwd,
       config: this.opts.config,
+      previousPlan: options?.previousPlan,
+      planUpdateNotes: options?.planUpdateNotes,
     });
-    const userMessage  = buildUserMessage(stage, task, attempt);
+    const userMessage  = buildUserMessage(stage, task, attempt, options);
 
     this.logger.log('agent_call_start', { run_id: state.run_id, stage, attempt: state.attempt + 1 });
 
@@ -385,10 +414,12 @@ interface SystemPromptContext {
   runDir: string;
   cwd: string;
   config: HarnessConfig;
+  previousPlan?: string;
+  planUpdateNotes?: string;
 }
 
 function buildSystemPrompt(ctx: SystemPromptContext): string {
-  const { stage, agentName, runId, attempt, runDir, cwd, config } = ctx;
+  const { stage, agentName, runId, attempt, runDir, cwd, config, previousPlan, planUpdateNotes } = ctx;
   const artifactName = STAGE_TO_ARTIFACT[stage];
   const outputPath = path.join(runDir, artifactName);
   const globalRulesPath = path.join(cwd, '.codex', 'global-rules.md');
@@ -429,6 +460,14 @@ function buildSystemPrompt(ctx: SystemPromptContext): string {
     '',
     'Return your stage artifact as the final Markdown response. The harness will write it to the run directory.',
   ];
+
+  if (stage === 'planning' && previousPlan && planUpdateNotes) {
+    basePrompt.push(
+      '',
+      'REVISION REQUEST:',
+      'You are revising an existing plan based on user feedback. Make sure to keep the required sections and format, but update the strategies/details to address the user\'s requests/corrections.'
+    );
+  }
 
   const roleSpecific = getRoleSpecificInstructions(stage);
 
@@ -491,11 +530,31 @@ function getRoleSpecificInstructions(stage: Stage): string {
   }
 }
 
-function buildUserMessage(stage: Stage, task: string, attempt: number): string {
+function buildUserMessage(
+  stage: Stage,
+  task: string,
+  attempt: number,
+  options?: { previousPlan?: string; planUpdateNotes?: string }
+): string {
   const attemptNote = attempt > 1 ? `\n\nAttempt: ${attempt} (previous attempt failed — see failure details above)` : '';
 
   switch (stage) {
     case 'planning':
+      if (options?.previousPlan && options?.planUpdateNotes) {
+        return `Task: ${task}
+
+We have already generated a plan, but the user requested changes/clarifications.
+
+Previous Plan:
+\`\`\`markdown
+${options.previousPlan}
+\`\`\`
+
+User requested changes/clarifications:
+${options.planUpdateNotes}
+
+Please update the plan to incorporate these changes/clarifications. Maintain the exact same structure (Ask, Assumptions, Acceptance Criteria, Implementation Strategy, Test Strategy) and refine the strategy and criteria accordingly.`;
+      }
       return `Task: ${task}${attemptNote}`;
 
     default:
