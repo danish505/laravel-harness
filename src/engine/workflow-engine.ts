@@ -20,6 +20,8 @@ import {
 import type { RunPaths } from './run-manager.js';
 import type { ProgressReporter } from '../ui/progress-reporter.js';
 import { HARNESS_NAME_WITH_VERSION } from '../constants.js';
+import { ContextPipeline, ContextPipelineImpl } from '../context/context-pipeline.js';
+import type { ContextOptimizationMetrics } from '../context/types.js';
 
 export interface WorkflowEngineOptions {
   config: HarnessConfig;
@@ -36,6 +38,8 @@ export interface WorkflowEngineOptions {
   approvalGate?: ApprovalGate;
   /** Optional initial plan text to skip planning stage. */
   initialPlan?: string;
+  /** Optional custom context pipeline override */
+  contextPipeline?: ContextPipeline;
 }
 
 const STAGE_ORDER: Stage[] = ['planning', 'implementing', 'testing', 'reviewing'];
@@ -60,6 +64,8 @@ export class WorkflowEngine {
   private lock: RunLock;
   private logger: EventLogger;
   private gate: ApprovalGate;
+  private contextPipeline: ContextPipeline;
+  private aggregateOptimizationMetrics: ContextOptimizationMetrics;
 
   constructor(opts: WorkflowEngineOptions) {
     this.opts   = opts;
@@ -67,12 +73,25 @@ export class WorkflowEngine {
     this.lock   = new RunLock(opts.paths.runDir);
     this.logger = new EventLogger(opts.paths.eventsFile);
     this.gate   = opts.approvalGate ?? new ApprovalGate();
+    this.contextPipeline = opts.contextPipeline ?? new ContextPipelineImpl(opts.config, opts.provider);
+    this.aggregateOptimizationMetrics = {
+      originalTokens: 0,
+      optimizedTokens: 0,
+      savedTokens: 0,
+      savingsPercent: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      providerCalls: 0,
+      fallbacks: 0,
+    };
   }
 
   async run(): Promise<RunState> {
     this.lock.acquire();
     try {
-      return await this.execute();
+      const state = await this.execute();
+      this.printOptimizationSummary();
+      return state;
     } finally {
       this.lock.release();
     }
@@ -261,6 +280,44 @@ export class WorkflowEngine {
     return state;
   }
 
+  private accumulateOptimizationMetrics(metrics: ContextOptimizationMetrics): void {
+    this.aggregateOptimizationMetrics.originalTokens += metrics.originalTokens;
+    this.aggregateOptimizationMetrics.optimizedTokens += metrics.optimizedTokens;
+    this.aggregateOptimizationMetrics.savedTokens += metrics.savedTokens;
+    this.aggregateOptimizationMetrics.cacheHits += metrics.cacheHits;
+    this.aggregateOptimizationMetrics.cacheMisses += metrics.cacheMisses;
+    this.aggregateOptimizationMetrics.providerCalls += metrics.providerCalls;
+    this.aggregateOptimizationMetrics.fallbacks += metrics.fallbacks;
+  }
+
+  private printOptimizationSummary(): void {
+    const totalOriginal = this.aggregateOptimizationMetrics.originalTokens;
+    if (totalOriginal === 0) {
+      return;
+    }
+
+    const totalOptimized = this.aggregateOptimizationMetrics.optimizedTokens;
+    const saved = totalOriginal - totalOptimized;
+    const savingsPercent = totalOriginal > 0 ? (saved / totalOriginal) * 100 : 0;
+    const pctStr = savingsPercent.toFixed(1);
+    const hitStr = this.aggregateOptimizationMetrics.cacheHits > 0 ? ' (Cache Hit)' : '';
+
+    if (this.opts.reporter) {
+      this.opts.reporter.contextOptimizationStats({
+        originalTokens: totalOriginal,
+        optimizedTokens: totalOptimized,
+        savedTokens: saved,
+        savingsPercent,
+        cacheHits: this.aggregateOptimizationMetrics.cacheHits,
+        cacheMisses: this.aggregateOptimizationMetrics.cacheMisses,
+        providerCalls: this.aggregateOptimizationMetrics.providerCalls,
+        fallbacks: this.aggregateOptimizationMetrics.fallbacks,
+      });
+    } else {
+      console.log(`  ⚡ Context Optimized: ${totalOriginal} → ${totalOptimized} tokens (saved ${pctStr}%)${hitStr}`);
+    }
+  }
+
   private enterStage(stage: Stage, state: RunState, runId: string): RunState {
     const enterStatus = stageToEnterStatus(stage);
     let next = state;
@@ -298,6 +355,25 @@ export class WorkflowEngine {
 
     this.logger.log('agent_call_start', { run_id: state.run_id, stage, attempt: state.attempt + 1 });
 
+    // Prepare optimized context files
+    const { contextFiles, inputHashes, metrics } = await this.contextPipeline.prepare({
+      stage,
+      runId: state.run_id,
+      attempt,
+      cwd: this.opts.cwd,
+      runDir: this.opts.paths.runDir,
+    });
+
+    this.logger.log('context_optimization', {
+      run_id: state.run_id,
+      stage,
+      attempt,
+      enabled: this.opts.config.context_optimization?.enabled ?? false,
+      ...metrics,
+    });
+
+    this.accumulateOptimizationMetrics(metrics);
+
     // Attach live event callback when provider supports it (CodexProvider)
     const reporter = this.opts.reporter;
     if (reporter && 'setOnEvent' in provider && typeof (provider as Record<string, unknown>).setOnEvent === 'function') {
@@ -312,7 +388,7 @@ export class WorkflowEngine {
       attempt: state.attempt + 1,
       systemPrompt,
       userMessage,
-      contextFiles: [],
+      contextFiles,
     });
 
     this.logger.log('agent_call_complete', { run_id: state.run_id, stage, status: agentResult.status });
@@ -331,7 +407,7 @@ export class WorkflowEngine {
       status: agentResult.status,
       agent_id: stage,
       provider: this.opts.config.provider,
-      input_hashes: {},
+      input_hashes: inputHashes,
       output_files: [],
       summary: agentResult.content.slice(0, 200),
       content: agentResult.content,

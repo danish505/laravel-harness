@@ -24,6 +24,8 @@ describe('initCommand', () => {
 
     expect(fs.existsSync(path.join(tmpDir, '.largentic', 'config.yaml'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, '.largentic', 'task.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, '.largentic', 'config.yaml'), 'utf8')).toContain('context_optimization:');
+    expect(fs.readFileSync(path.join(tmpDir, '.largentic', 'config.yaml'), 'utf8')).toContain('enabled: true');
 
     expect(fs.existsSync(path.join(tmpDir, '.codex', 'config.toml'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, '.codex', 'global-rules.md'))).toBe(true);

@@ -9,6 +9,18 @@ import { HARNESS_DIR_NAME } from '../constants.js';
 const CONFIG_DEFAULTS: HarnessConfig = {
   version: 2,
   profile: 'generic',
+  context_optimization: {
+    enabled: true,
+    provider: 'native',
+    mode: 'standard',
+    minimum_tokens: 500,
+    minimum_savings_percent: 20,
+    maximum_file_size_kb: 500,
+    fail_open: true,
+    semantic_validation: true,
+    cache_enabled: true,
+    retain_original_reference: true,
+  },
   workflow: {
     max_attempts: 3,
     plan_approval: 'required',
@@ -98,6 +110,57 @@ function applyEnvOverrides(config: HarnessConfig): HarnessConfig {
   }
   if (process.env.LH_PROFILE) {
     config.profile = process.env.LH_PROFILE as HarnessConfig['profile'];
+  }
+  if (process.env.LH_CONTEXT_OPTIMIZATION) {
+    if (!config.context_optimization) {
+      config.context_optimization = {
+        enabled: true,
+        provider: 'native',
+        mode: 'standard',
+        minimum_tokens: 500,
+        minimum_savings_percent: 20,
+        maximum_file_size_kb: 500,
+        fail_open: true,
+        semantic_validation: true,
+        cache_enabled: true,
+        retain_original_reference: true,
+      };
+    }
+    config.context_optimization.enabled = process.env.LH_CONTEXT_OPTIMIZATION === 'true';
+  }
+  if (process.env.LH_COMPRESSION_PROVIDER) {
+    if (!config.context_optimization) {
+      config.context_optimization = {
+        enabled: true,
+        provider: 'native',
+        mode: 'standard',
+        minimum_tokens: 500,
+        minimum_savings_percent: 20,
+        maximum_file_size_kb: 500,
+        fail_open: true,
+        semantic_validation: true,
+        cache_enabled: true,
+        retain_original_reference: true,
+      };
+    }
+    config.context_optimization.provider = process.env.LH_COMPRESSION_PROVIDER as any;
+  }
+  if (process.env.LH_COMPRESSION_MODE) {
+    if (!config.context_optimization) {
+      config.context_optimization = {
+        enabled: true,
+        provider: 'native',
+        mode: 'standard',
+        minimum_tokens: 500,
+        minimum_savings_percent: 20,
+        maximum_file_size_kb: 500,
+        fail_open: true,
+        semantic_validation: true,
+        cache_enabled: true,
+        retain_original_reference: true,
+      };
+    }
+    config.context_optimization.mode = process.env.LH_COMPRESSION_MODE as any;
   }
   return config;
 }

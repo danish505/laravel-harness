@@ -13,6 +13,7 @@ const CODEX_FILES = [
   path.join('agents', 'implementer.toml'),
   path.join('agents', 'tester.toml'),
   path.join('agents', 'reviewer.toml'),
+  path.join('skills', 'context-optimizer', 'SKILL.md'),
 ];
 
 const CONFIG_TEMPLATE = `# ${HARNESS_NAME_WITH_VERSION} Configuration
@@ -21,6 +22,18 @@ version: 2
 
 # Detected profile (laravel | generic)
 profile: PROFILE_PLACEHOLDER
+
+context_optimization:
+  enabled: true
+  provider: native
+  mode: standard
+  minimum_tokens: 500
+  minimum_savings_percent: 20
+  maximum_file_size_kb: 500
+  fail_open: true
+  semantic_validation: true
+  cache_enabled: true
+  retain_original_reference: true
 
 workflow:
   max_attempts: 3
@@ -88,6 +101,7 @@ export function initCommand(cwd: string): void {
     const targetPath = path.join(codexDir, relativePath);
 
     if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.copyFileSync(sourcePath, targetPath);
       codexFilesDeployed++;
     }

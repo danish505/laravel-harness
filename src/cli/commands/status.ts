@@ -22,6 +22,39 @@ export function statusCommand(runId: string, cwd: string): void {
     console.log(`  Elapsed: ${elapsed}s`);
     console.log(`  Updated: ${state.updated_at}`);
     if (state.failure_reason) console.log(`  Reason : ${state.failure_reason}`);
+
+    // Read context optimization event logs if any
+    try {
+      const logger = new EventLogger(paths.eventsFile);
+      const events = logger.readAll();
+      const optEvents = events.filter((e) => e.type === 'context_optimization');
+      if (optEvents.length > 0) {
+        console.log(`  Context Optimization:`);
+        let totalSaved = 0;
+        let totalOriginal = 0;
+        let totalFallbacks = 0;
+        let totalHits = 0;
+        let totalMisses = 0;
+
+        for (const e of optEvents) {
+          totalSaved += (e.savedTokens as number) || 0;
+          totalOriginal += (e.originalTokens as number) || 0;
+          totalFallbacks += (e.fallbacks as number) || 0;
+          totalHits += (e.cacheHits as number) || 0;
+          totalMisses += (e.cacheMisses as number) || 0;
+        }
+        const savingsPct = totalOriginal > 0 ? ((totalSaved / totalOriginal) * 100).toFixed(1) : '0.0';
+        console.log(`    Original Tokens: ${totalOriginal}`);
+        console.log(`    Saved Tokens   : ${totalSaved} (${savingsPct}%)`);
+        console.log(`    Cache Hits     : ${totalHits} / Misses: ${totalMisses}`);
+        if (totalFallbacks > 0) {
+          console.log(`    Fallbacks      : ${totalFallbacks} (Validation failure/outages)`);
+        }
+      }
+    } catch {
+      // Ignore reading issues
+    }
+
     console.log('');
   } catch (e: unknown) {
     console.error(`❌ ${e instanceof Error ? e.message : String(e)}`);

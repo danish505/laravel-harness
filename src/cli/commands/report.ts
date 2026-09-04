@@ -21,6 +21,21 @@ export function reportCommand(runId: string, cwd: string): void {
       ['stage_complete', 'stage_failed'].includes(e.type)
     );
 
+    const optEvents = events.filter((e) => e.type === 'context_optimization');
+    let optSection = '';
+    if (optEvents.length > 0) {
+      optSection = [
+        `## Context Optimization`,
+        `| Stage | Attempt | Original Tokens | Optimized Tokens | Saved Tokens | Savings % | Cache Hits |`,
+        `|---|---|---|---|---|---|---|`,
+        ...optEvents.map((e) => {
+          const savingsPct = e['originalTokens'] ? (((e['savedTokens'] as number) / (e['originalTokens'] as number)) * 100).toFixed(1) : '0.0';
+          return `| ${e['stage']} | ${e['attempt']} | ${e['originalTokens']} | ${e['optimizedTokens']} | ${e['savedTokens']} | ${savingsPct}% | ${e['cacheHits']} |`;
+        }),
+        ``,
+      ].join('\n');
+    }
+
     const artifactFiles = ['plan.md', 'implementation.md', 'test-results.md', 'review.md'];
     const artifacts = artifactFiles
       .filter((f) => fs.existsSync(require('path').join(runDir, f)))
@@ -39,6 +54,7 @@ export function reportCommand(runId: string, cwd: string): void {
       `**Started:** ${manifest.created_at}`,
       `**Elapsed:** ${elapsedMin} min`,
       ``,
+      optSection,
       `## Timeline`,
       ...stageEvents.map(
         (e) => `- [${e['timestamp']}] ${e.type}: stage=${e['stage']} attempt=${e['attempt']}`

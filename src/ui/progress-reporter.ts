@@ -1,5 +1,6 @@
 import type { Stage } from '../types.js';
 import { Spinner } from './spinner.js';
+import type { ContextOptimizationMetrics } from '../context/types.js';
 
 const STAGE_LABEL: Record<Stage, string> = {
   planning:     'planning',
@@ -37,6 +38,16 @@ export class ProgressReporter {
   stageFailed(stage: Stage, classification: string): void {
     const label = `\x1b[31m[${STAGE_LABEL[stage]}]\x1b[0m failed \x1b[2m— ${classification}\x1b[0m`;
     this.spinner.stop('❌', label);
+  }
+
+  contextOptimizationStats(stats: ContextOptimizationMetrics): void {
+    const savingsPctStr = stats.savingsPercent.toFixed(1);
+    const hitIndicator = stats.cacheHits > 0 ? ` \x1b[32m(Cache Hit)\x1b[0m` : '';
+    const fallbackIndicator = stats.fallbacks > 0 ? ` \x1b[31m(Fallback: ${stats.fallbacks})\x1b[0m` : '';
+    
+    this.spinner.printSubLine(
+      `  \x1b[33m⚡\x1b[0m Context Optimized: \x1b[2m${stats.originalTokens} → ${stats.optimizedTokens} tokens (saved ${savingsPctStr}%)\x1b[0m${hitIndicator}${fallbackIndicator}`
+    );
   }
 
   retrying(stage: Stage, nextAttempt: number): void {

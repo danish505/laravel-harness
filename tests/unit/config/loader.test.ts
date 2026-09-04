@@ -28,6 +28,7 @@ describe('config loader', () => {
     const { config, valid } = loadConfig(missing);
     expect(valid).toBe(false);
     expect(config.workflow.max_attempts).toBe(3);
+    expect(config.context_optimization?.enabled).toBe(true);
   });
 
   it('validates a minimal valid config', () => {
@@ -47,6 +48,7 @@ describe('config loader', () => {
     expect(config.workflow.max_attempts).toBe(5);
     expect(config.workflow.plan_approval).toBe('required'); // default preserved
     expect(config.workflow.plan_export_directory).toBe('.largentic/exports');
+    expect(config.context_optimization?.enabled).toBe(true);
   });
 
   it('accepts a custom plan_export_directory', () => {

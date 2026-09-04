@@ -17,6 +17,68 @@
       "default": "generic",
       "description": "Framework profile to use."
     },
+    "context_optimization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether context optimization is enabled."
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["native", "caveman", "fake"],
+          "default": "native",
+          "description": "Compression provider to use."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["light", "standard", "aggressive"],
+          "default": "standard",
+          "description": "Optimization aggressiveness."
+        },
+        "minimum_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 500,
+          "description": "Minimum token count of a file before we attempt to optimize it."
+        },
+        "minimum_savings_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 20,
+          "description": "Minimum percentage token reduction required to accept optimized context."
+        },
+        "maximum_file_size_kb": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 500,
+          "description": "Maximum size in KB of a file before we bypass optimization."
+        },
+        "fail_open": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to fall back to the original file if optimization fails."
+        },
+        "semantic_validation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to perform semantic/validation pipeline check."
+        },
+        "cache_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to cache compressed contexts."
+        },
+        "retain_original_reference": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to include a recovery reference/metadata pointing to the original file."
+        }
+      }
+    },
     "workflow": {
       "type": "object",
       "additionalProperties": false,
@@ -123,6 +185,11 @@
         },
         "system_prompt_override": {
           "type": "string"
+        },
+        "context_budget": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum token budget for this agent's context."
         }
       }
     }

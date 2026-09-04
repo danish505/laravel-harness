@@ -4,6 +4,8 @@ import * as path from 'path';
 import { initCommand } from './commands/init.js';
 import { doctorCommand } from './commands/doctor.js';
 import { configValidateCommand, configShowCommand } from './commands/config.js';
+import { contextInspectCommand } from './commands/context-inspect.js';
+import { contextClearCommand, contextStatusCommand, contextCompressCommand } from './commands/context-commands.js';
 import { runCommand } from './commands/run.js';
 import { statusCommand, inspectCommand, cancelCommand } from './commands/status.js';
 import { reportCommand } from './commands/report.js';
@@ -39,6 +41,31 @@ configCmd
   .command('show')
   .description('Print the merged configuration')
   .action(() => configShowCommand(cwd));
+
+const contextCmd = program.command('context').description('Context optimization commands');
+
+contextCmd
+  .command('inspect')
+  .description('Inspect context files and check token counts/policies')
+  .action(() => contextInspectCommand(cwd));
+
+contextCmd
+  .command('status')
+  .description('Show context optimization status and cache metrics')
+  .action(() => contextStatusCommand(cwd));
+
+contextCmd
+  .command('clear')
+  .description('Clear optimized context cache')
+  .action(() => contextClearCommand(cwd));
+
+contextCmd
+  .command('compress [file]')
+  .description('Manually compress a context file')
+  .option('--all', 'Compress all common context files')
+  .action(async (file: string | undefined, opts: { all?: boolean }) => {
+    await contextCompressCommand(cwd, file, opts);
+  });
 
 program
   .command('run [task]')

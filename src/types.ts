@@ -70,9 +70,23 @@ export interface StageResult {
   completed_at: string;
 }
 
+export interface ContextOptimizationConfig {
+  enabled: boolean;
+  provider: 'native' | 'caveman' | 'fake';
+  mode: 'light' | 'standard' | 'aggressive';
+  minimum_tokens: number;
+  minimum_savings_percent: number;
+  maximum_file_size_kb: number;
+  fail_open: boolean;
+  semantic_validation: boolean;
+  cache_enabled: boolean;
+  retain_original_reference: boolean;
+}
+
 export interface HarnessConfig {
   version: 2;
   profile: 'laravel' | 'generic';
+  context_optimization?: ContextOptimizationConfig;
   workflow: {
     max_attempts: number;
     plan_approval: 'required' | 'automatic';
@@ -103,6 +117,7 @@ export interface AgentConfig {
   provider?: 'codex' | 'fake';
   reasoning?: 'low' | 'medium' | 'high';
   system_prompt_override?: string;
+  context_budget?: number;
 }
 
 export interface AgentRequest {

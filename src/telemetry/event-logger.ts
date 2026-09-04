@@ -14,6 +14,7 @@ export type EventType =
   | 'approval_decision'
   | 'retry'
   | 'termination'
+  | 'context_optimization'
   | 'budget_check';
 
 export interface HarnessEvent {
