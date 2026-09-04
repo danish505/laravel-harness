@@ -70,6 +70,11 @@ Compression aggressiveness level requested: ${request.mode}`;
           originalTokens,
           compressedTokens,
           diagnostics: [],
+          usage: {
+            inputTokens: agentResult.usage?.inputTokens ?? TokenCounter.countTokens(`${systemPrompt}\n${userMessage}`),
+            outputTokens: agentResult.usage?.outputTokens ?? compressedTokens,
+            measurementBasis: agentResult.usage ? 'provider_reported' : 'estimate',
+          },
         };
       }
 
@@ -80,6 +85,11 @@ Compression aggressiveness level requested: ${request.mode}`;
         originalTokens,
         compressedTokens: originalTokens,
         diagnostics: [`LLM compression failed: ${agentResult.content || 'Unknown error'}`],
+        usage: {
+          inputTokens: agentResult.usage?.inputTokens ?? TokenCounter.countTokens(`${systemPrompt}\n${userMessage}`),
+          outputTokens: agentResult.usage?.outputTokens ?? TokenCounter.countTokens(agentResult.content ?? ''),
+          measurementBasis: agentResult.usage ? 'provider_reported' : 'estimate',
+        },
       };
     } catch (e: any) {
       return {

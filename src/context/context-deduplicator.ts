@@ -1,3 +1,5 @@
+import * as crypto from 'crypto';
+
 export class ContextDeduplicator {
   private seenBlocks = new Set<string>();
 
@@ -19,16 +21,29 @@ export class ContextDeduplicator {
         return block;
       }
 
-      const key = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const key = this.hashBlock(trimmed);
       if (this.seenBlocks.has(key)) {
-        return `_(Duplicate block omitted; referenced in previous rules/context)_`;
+        return '';
       }
 
       this.seenBlocks.add(key);
       return block;
     });
 
-    return uniqueBlocks.join('\n\n');
+    return uniqueBlocks.filter((block) => block !== '').join('\n\n');
+  }
+
+  public snapshot(): Set<string> {
+    return new Set(this.seenBlocks);
+  }
+
+  public restore(snapshot: Set<string>): void {
+    this.seenBlocks = new Set(snapshot);
+  }
+
+  private hashBlock(block: string): string {
+    const normalized = block.replace(/\r\n/g, '\n').trim();
+    return crypto.createHash('sha256').update(normalized).digest('hex');
   }
 
   /**

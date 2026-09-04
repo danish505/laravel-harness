@@ -13,6 +13,8 @@ import { FakeProvider } from '../../../src/providers/fake-provider.js';
 import { ContextRecoveryRegistry } from '../../../src/context/context-recovery-registry.js';
 import { SemanticGrader } from '../../../src/validation/semantic-grader.js';
 import { ContextDeduplicator } from '../../../src/context/context-deduplicator.js';
+import { ContextPipelineImpl } from '../../../src/context/context-pipeline.js';
+import type { AgentProvider, HarnessConfig } from '../../../src/types.js';
 import type { ContextDocument } from '../../../src/context/types.js';
 
 describe('Context Optimization (Phase 1 & 2)', () => {
@@ -149,7 +151,14 @@ describe('Context Optimization (Phase 1 & 2)', () => {
       type: 'conventions',
     };
 
-    it('passes when headings and critical spans are preserved', () => {
+    it('passes when headings and critical spans are preserved in smaller output', () => {
+      const verboseDoc: ContextDocument = {
+        ...originalDoc,
+        content: [
+          originalDoc.content,
+          'This explanatory filler is intentionally verbose and removable. '.repeat(20),
+        ].join('\n'),
+      };
       const goodCompressed = [
         '# Global Rules',
         'Never run migrations in production.',
@@ -159,9 +168,31 @@ describe('Context Optimization (Phase 1 & 2)', () => {
         '```',
       ].join('\n');
 
-      const result = ValidationPipeline.validate(originalDoc, goodCompressed, 5);
+      const result = ValidationPipeline.validate(verboseDoc, goodCompressed, 5);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
+    });
+
+    it('fails when optimized output is larger or unchanged', () => {
+      const unchanged = ValidationPipeline.validate(originalDoc, originalDoc.content, 0);
+      const larger = ValidationPipeline.validate(originalDoc, `${originalDoc.content}\nExtra content that makes this larger.`, 0);
+
+      expect(unchanged.valid).toBe(false);
+      expect(unchanged.errors).toContain('Optimized output is not smaller than original');
+      expect(larger.valid).toBe(false);
+      expect(larger.errors).toContain('Optimized output is not smaller than original');
+    });
+
+    it('fails when token savings are below the configured threshold', () => {
+      const verboseDoc: ContextDocument = {
+        ...originalDoc,
+        content: `${originalDoc.content}\n${'Removable filler. '.repeat(10)}`,
+      };
+      const slightlySmaller = `${originalDoc.content}\n${'Removable filler. '.repeat(6)}`;
+
+      const result = ValidationPipeline.validate(verboseDoc, slightlySmaller, 50);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((error) => error.includes('did not meet minimum threshold'))).toBe(true);
     });
 
     it('fails when headings are removed', () => {
@@ -289,19 +320,119 @@ describe('Context Optimization (Phase 1 & 2)', () => {
     it('runs validateAsync successfully', async () => {
       const fakeAgent = new FakeProvider();
       const grader = new SemanticGrader(fakeAgent);
+      const verboseDoc: ContextDocument = {
+        ...originalDoc,
+        content: `${originalDoc.content}\n${'Removable details. '.repeat(20)}`,
+      };
 
       const goodCompressed = [
         '# Global Rules',
         'Never run migrations in production.',
       ].join('\n');
 
-      const result = await ValidationPipeline.validateAsync(originalDoc, goodCompressed, 5, true, grader);
+      const result = await ValidationPipeline.validateAsync(verboseDoc, goodCompressed, 5, true, grader);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
   });
 
+  describe('ContextPipeline metrics', () => {
+    function optimizationConfig(): HarnessConfig {
+      return {
+        version: 2,
+        profile: 'generic',
+        context_optimization: {
+          enabled: true,
+          provider: 'native',
+          mode: 'standard',
+          minimum_tokens: 1,
+          minimum_savings_percent: 1,
+          maximum_file_size_kb: 500,
+          fail_open: true,
+          semantic_validation: false,
+          cache_enabled: false,
+          retain_original_reference: true,
+        },
+        workflow: { max_attempts: 1, plan_approval: 'automatic', review_approval: 'automatic' },
+        agents: {},
+        quality_gates: { require_tests: true, require_clean_secrets_scan: true, max_changed_files: 25 },
+        budget: { max_runtime_minutes: 45, max_estimated_cost_usd: 10 },
+        provider: 'fake',
+      };
+    }
+
+    it('reports gross, overhead, and net token savings separately', async () => {
+      const provider = new FakeProvider();
+      fs.writeFileSync(
+        path.join(tempDir, 'AGENTS.md'),
+        `# Rules\n\n${'This removable explanatory sentence is intentionally verbose and repetitive. '.repeat(40)}`,
+        'utf8'
+      );
+
+      const pipeline = new ContextPipelineImpl(optimizationConfig(), provider);
+      const result = await pipeline.prepare({
+        stage: 'planning',
+        runId: 'run-1',
+        attempt: 1,
+        cwd: tempDir,
+        runDir: tempDir,
+      });
+
+      expect(result.metrics.sourceTokens).toBeGreaterThan(0);
+      expect(result.metrics.deliveredTokens).toBeGreaterThan(0);
+      expect(result.metrics.grossTokensSaved).toBe(result.metrics.sourceTokens - result.metrics.deliveredTokens);
+      expect(result.metrics.optimizationOverheadTokens).toBe(0);
+      expect(result.metrics.netTokensSaved).toBe(result.metrics.grossTokensSaved);
+      expect(result.metrics.originalTokens).toBe(result.metrics.sourceTokens);
+      expect(result.metrics.savedTokens).toBe(result.metrics.grossTokensSaved);
+    });
+
+    it('reports negative net savings when compression overhead exceeds gross savings', async () => {
+      class CostlyCompressionProvider implements AgentProvider {
+        async execute() {
+          return {
+            status: 'success' as const,
+            content: '# Rules\n\nShort.',
+            usage: { inputTokens: 1000, outputTokens: 500 },
+          };
+        }
+      }
+
+      fs.writeFileSync(
+        path.join(tempDir, 'AGENTS.md'),
+        `# Rules\n\n${'This removable explanatory sentence is intentionally verbose and repetitive. '.repeat(40)}`,
+        'utf8'
+      );
+
+      const pipeline = new ContextPipelineImpl(optimizationConfig(), new CostlyCompressionProvider());
+      const result = await pipeline.prepare({
+        stage: 'planning',
+        runId: 'run-1',
+        attempt: 1,
+        cwd: tempDir,
+        runDir: tempDir,
+      });
+
+      expect(result.metrics.grossTokensSaved).toBeGreaterThan(0);
+      expect(result.metrics.optimizationOverheadTokens).toBe(1500);
+      expect(result.metrics.netTokensSaved).toBeLessThan(0);
+      expect(result.metrics.measurementBasis).toBe('provider_reported');
+    });
+  });
+
   describe('ContextDeduplicator', () => {
+    it('does not collide punctuation-sensitive instructions', () => {
+      const allowForce = 'Run `php artisan migrate --force` only after explicit approval and documented rollback review.';
+      const denyForce = 'Run `php artisan migrate --no-force` only after explicit approval and documented rollback review.';
+      const dedup = new ContextDeduplicator();
+
+      const dedup1 = dedup.deduplicateDocument(allowForce);
+      const dedup2 = dedup.deduplicateDocument(denyForce);
+
+      expect(dedup1).toContain('--force');
+      expect(dedup2).toContain('--no-force');
+    });
+
     it('removes repeated duplicate blocks but keeps headings and checklist items', () => {
       const doc1 = [
         '# Global Guidelines',
@@ -321,7 +452,7 @@ describe('Context Optimization (Phase 1 & 2)', () => {
 
       expect(dedup1).toContain('Always make minimal');
       expect(dedup2).toContain('# Global Guidelines');
-      expect(dedup2).toContain('_(Duplicate block omitted; referenced in previous rules/context)_');
+      expect(dedup2).not.toContain('Always make minimal surgical changes that fully address requirements.');
       expect(dedup2).toContain('- [ ] Implement the feature');
     });
   });

@@ -26,11 +26,16 @@ export function reportCommand(runId: string, cwd: string): void {
     if (optEvents.length > 0) {
       optSection = [
         `## Context Optimization`,
-        `| Stage | Attempt | Original Tokens | Optimized Tokens | Saved Tokens | Savings % | Cache Hits |`,
-        `|---|---|---|---|---|---|---|`,
+        `| Stage | Attempt | Source Tokens | Delivered Tokens | Gross Reduction | Overhead | Net Savings | Net % | Basis | Cache Hits |`,
+        `|---|---|---|---|---|---|---|---|---|---|`,
         ...optEvents.map((e) => {
-          const savingsPct = e['originalTokens'] ? (((e['savedTokens'] as number) / (e['originalTokens'] as number)) * 100).toFixed(1) : '0.0';
-          return `| ${e['stage']} | ${e['attempt']} | ${e['originalTokens']} | ${e['optimizedTokens']} | ${e['savedTokens']} | ${savingsPct}% | ${e['cacheHits']} |`;
+          const sourceTokens = (e['sourceTokens'] ?? e['originalTokens']) as number | undefined;
+          const deliveredTokens = (e['deliveredTokens'] ?? e['optimizedTokens']) as number | undefined;
+          const grossSaved = (e['grossTokensSaved'] ?? e['savedTokens']) as number | undefined;
+          const overhead = (e['optimizationOverheadTokens'] as number | undefined) ?? 0;
+          const netSaved = (e['netTokensSaved'] ?? grossSaved) as number | undefined;
+          const netPct = sourceTokens ? (((netSaved ?? 0) / sourceTokens) * 100).toFixed(1) : '0.0';
+          return `| ${e['stage']} | ${e['attempt']} | ${sourceTokens ?? 0} | ${deliveredTokens ?? 0} | ${grossSaved ?? 0} | ${overhead} | ${netSaved ?? 0} | ${netPct}% | ${e['measurementBasis'] ?? 'estimate'} | ${e['cacheHits']} |`;
         }),
         ``,
       ].join('\n');

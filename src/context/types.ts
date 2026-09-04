@@ -33,13 +33,27 @@ export interface ProtectedSpan {
   type: 'code_block' | 'inline_code' | 'url' | 'path' | 'command' | 'variable' | 'number' | 'heading' | 'constraint';
 }
 
+export type ContextOptimizationMeasurementBasis = 'provider_reported' | 'tokenizer' | 'estimate';
+
 export interface ContextOptimizationMetrics {
-  originalTokens: number;
-  optimizedTokens: number;
-  savedTokens: number;
-  savingsPercent: number;
+  sourceTokens: number;
+  deliveredTokens: number;
+  grossTokensSaved: number;
+  compressionInputTokens: number;
+  compressionOutputTokens: number;
+  validationInputTokens: number;
+  validationOutputTokens: number;
+  optimizationOverheadTokens: number;
+  netTokensSaved: number;
+  netSavingsPercent: number;
   cacheHits: number;
   cacheMisses: number;
   providerCalls: number;
   fallbacks: number;
+  measurementBasis: ContextOptimizationMeasurementBasis;
+  breakEvenUses: number;
+  originalTokens: number;
+  optimizedTokens: number;
+  savedTokens: number;
+  savingsPercent: number;
 }

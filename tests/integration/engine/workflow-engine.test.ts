@@ -8,7 +8,7 @@ import { WorkflowEngine } from '../../../src/engine/workflow-engine.js';
 import { ApprovalGate } from '../../../src/engine/approval-gate.js';
 import { FakeProvider } from '../../../src/providers/fake-provider.js';
 import { StateStore } from '../../../src/state/state-store.js';
-import type { HarnessConfig, AgentResult, ApprovalDecision } from '../../../src/types.js';
+import type { HarnessConfig, AgentResult, ApprovalDecision, ContextFile } from '../../../src/types.js';
 
 function makeGate(decisions: ApprovalDecision[], updateNotes: string[] = []): ApprovalGate {
   let index = 0;
@@ -256,10 +256,15 @@ describe('WorkflowEngine — integration', () => {
     const { runId, paths } = manager.create('Conductor test', { profile: 'generic', provider: 'fake' });
 
     const provider = new FakeProvider();
-    const requests: Array<{ stage: string; systemPrompt: string; userMessage: string }> = [];
+    const requests: Array<{ stage: string; systemPrompt: string; userMessage: string; contextFiles: ContextFile[] }> = [];
     const originalExecute = provider.execute.bind(provider);
     provider.execute = async (req) => {
-      requests.push({ stage: req.stage, systemPrompt: req.systemPrompt, userMessage: req.userMessage });
+      requests.push({
+        stage: req.stage,
+        systemPrompt: req.systemPrompt,
+        userMessage: req.userMessage,
+        contextFiles: req.contextFiles,
+      });
       return originalExecute(req);
     };
 
@@ -287,18 +292,55 @@ describe('WorkflowEngine — integration', () => {
     const implementing = requests.find((r) => r.stage === 'implementing');
     expect(implementing).toBeDefined();
     expect(implementing!.systemPrompt).toContain('Selected agent: implementer');
-    expect(implementing!.systemPrompt).toContain(path.join(paths.runDir, 'plan.md'));
+    expect(implementing!.systemPrompt).not.toContain(`Required input artifacts:\n- ${path.join(paths.runDir, 'plan.md')}`);
     expect(implementing!.systemPrompt).toContain(path.join(paths.runDir, 'implementation.md'));
+    expect(implementing!.contextFiles.some((file) => file.path === path.join(paths.runDir, 'plan.md'))).toBe(true);
 
     const testing = requests.find((r) => r.stage === 'testing');
     expect(testing).toBeDefined();
     expect(testing!.systemPrompt).toContain('Selected agent: tester');
-    expect(testing!.systemPrompt).toContain(path.join(paths.runDir, 'implementation.md'));
+    expect(testing!.systemPrompt).not.toContain(`Required input artifacts:\n- ${path.join(paths.runDir, 'implementation.md')}`);
+    expect(testing!.contextFiles.some((file) => file.path === path.join(paths.runDir, 'implementation.md'))).toBe(true);
 
     const reviewing = requests.find((r) => r.stage === 'reviewing');
     expect(reviewing).toBeDefined();
     expect(reviewing!.systemPrompt).toContain('Selected agent: reviewer');
-    expect(reviewing!.systemPrompt).toContain(path.join(paths.runDir, 'test-results.md'));
+    expect(reviewing!.systemPrompt).not.toContain(`Required input artifacts:\n- ${path.join(paths.runDir, 'test-results.md')}`);
+    expect(reviewing!.contextFiles.some((file) => file.path === path.join(paths.runDir, 'test-results.md'))).toBe(true);
+  });
+
+  it('does not require rereading attached context sources', async () => {
+    const manager = new RunManager(tmpDir);
+    const { runId, paths } = manager.create('No duplicate context delivery', { profile: 'generic', provider: 'fake' });
+    fs.writeFileSync(path.join(paths.runDir, 'plan.md'), '## Plan\n\nUse this attached plan.', 'utf8');
+
+    const provider = new FakeProvider();
+    const requests: Array<{ stage: string; systemPrompt: string; contextFiles: ContextFile[] }> = [];
+    const originalExecute = provider.execute.bind(provider);
+    provider.execute = async (req) => {
+      requests.push({ stage: req.stage, systemPrompt: req.systemPrompt, contextFiles: req.contextFiles });
+      return originalExecute(req);
+    };
+
+    const engine = new WorkflowEngine({
+      config: defaultConfig(),
+      provider,
+      runId,
+      paths,
+      task: 'No duplicate context delivery',
+      cwd: tmpDir,
+      autoApprove: true,
+      initialPlan: '## Plan\n\nUse this attached plan.',
+    });
+
+    await engine.run();
+
+    const implementing = requests.find((r) => r.stage === 'implementing');
+    const planPath = path.join(paths.runDir, 'plan.md');
+    expect(implementing).toBeDefined();
+    expect(implementing!.contextFiles.filter((file) => file.path === planPath)).toHaveLength(1);
+    expect(implementing!.systemPrompt).toContain('The attached context is authoritative for this stage.');
+    expect(implementing!.systemPrompt).not.toContain(`Required input artifacts:\n- ${planPath}`);
   });
 
   it('exports the plan to the default directory and then approves', async () => {

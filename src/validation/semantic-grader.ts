@@ -1,5 +1,16 @@
 import type { AgentProvider } from '../types.js';
 import type { ContextDocument } from '../context/types.js';
+import { TokenCounter } from '../tokenization/token-counter.js';
+
+export interface SemanticGradeResult {
+  score: number;
+  reasoning: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    measurementBasis: 'provider_reported' | 'estimate';
+  };
+}
 
 export class SemanticGrader {
   private agentProvider: AgentProvider;
@@ -11,7 +22,7 @@ export class SemanticGrader {
   /**
    * Grade semantic equivalence of compressed content on a scale of 1 to 10
    */
-  public async grade(original: ContextDocument, compressedContent: string): Promise<{ score: number; reasoning: string }> {
+  public async grade(original: ContextDocument, compressedContent: string): Promise<SemanticGradeResult> {
     if (this.agentProvider.constructor.name === 'FakeProvider') {
       return { score: 9, reasoning: 'Mock semantic grader approved' };
     }
@@ -56,12 +67,25 @@ Return only the valid JSON response.`;
             return {
               score: parsed.score,
               reasoning: parsed.reasoning || 'No explanation provided',
+              usage: {
+                inputTokens: result.usage?.inputTokens ?? TokenCounter.countTokens(`${systemPrompt}\n${userMessage}`),
+                outputTokens: result.usage?.outputTokens ?? TokenCounter.countTokens(result.content),
+                measurementBasis: result.usage ? 'provider_reported' : 'estimate',
+              },
             };
           }
         }
       }
 
-      return { score: 7, reasoning: `Failed to parse semantic grader response: ${result.content}` };
+      return {
+        score: 7,
+        reasoning: `Failed to parse semantic grader response: ${result.content}`,
+        usage: {
+          inputTokens: result.usage?.inputTokens ?? TokenCounter.countTokens(`${systemPrompt}\n${userMessage}`),
+          outputTokens: result.usage?.outputTokens ?? TokenCounter.countTokens(result.content ?? ''),
+          measurementBasis: result.usage ? 'provider_reported' : 'estimate',
+        },
+      };
     } catch (e: any) {
       return { score: 7, reasoning: `Semantic grading error: ${e.message}` };
     }

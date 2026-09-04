@@ -1,10 +1,17 @@
 import type { ContextDocument, ProtectedSpan } from '../context/types.js';
 import { ProtectedSpanExtractor } from '../compression/protected-span-extractor.js';
+import { TokenCounter } from '../tokenization/token-counter.js';
 import { SemanticGrader } from './semantic-grader.js';
 
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    measurementBasis: 'provider_reported' | 'estimate';
+  };
+  providerCalls: number;
 }
 
 export class ValidationPipeline {
@@ -22,6 +29,10 @@ export class ValidationPipeline {
 
     if (result.valid && semanticValidation && grader) {
       const gradeRes = await grader.grade(original, compressedContent);
+      result.providerCalls++;
+      if (gradeRes.usage) {
+        result.usage = gradeRes.usage;
+      }
       if (gradeRes.score < 8) {
         result.valid = false;
         result.errors.push(`Semantic grading score too low (${gradeRes.score}/10): ${gradeRes.reasoning}`);
@@ -42,15 +53,16 @@ export class ValidationPipeline {
     const errors: string[] = [];
 
     // 1. Minimum Savings Check
-    const originalLen = original.content.length;
-    const compressedLen = compressedContent.length;
-    if (originalLen > 0) {
-      const savingsPercent = ((originalLen - compressedLen) / originalLen) * 100;
-      if (savingsPercent < minSavingsPercent && compressedLen < originalLen) {
-        // Only reject if it did not meet savings AND is not unchanged.
-        // Wait, if it is completely unchanged, we might want to accept it as 'unchanged' fallback, 
-        // but if it mutated and saved less than minSavingsPercent, we should reject.
-        errors.push(`Savings (${savingsPercent.toFixed(1)}%) did not meet minimum threshold (${minSavingsPercent}%)`);
+    const originalTokens = TokenCounter.countTokens(original.content);
+    const compressedTokens = TokenCounter.countTokens(compressedContent);
+    if (originalTokens > 0) {
+      if (compressedTokens >= originalTokens) {
+        errors.push('Optimized output is not smaller than original');
+      } else {
+        const savingsPercent = ((originalTokens - compressedTokens) / originalTokens) * 100;
+        if (savingsPercent < minSavingsPercent) {
+          errors.push(`Savings (${savingsPercent.toFixed(1)}%) did not meet minimum threshold (${minSavingsPercent}%)`);
+        }
       }
     }
 
@@ -94,6 +106,7 @@ export class ValidationPipeline {
     return {
       valid: errors.length === 0,
       errors,
+      providerCalls: 0,
     };
   }
 }

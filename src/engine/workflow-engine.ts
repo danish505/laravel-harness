@@ -21,6 +21,7 @@ import type { RunPaths } from './run-manager.js';
 import type { ProgressReporter } from '../ui/progress-reporter.js';
 import { HARNESS_NAME_WITH_VERSION } from '../constants.js';
 import { ContextPipeline, ContextPipelineImpl } from '../context/context-pipeline.js';
+import type { PreparedContextDelivery } from '../context/context-pipeline.js';
 import type { ContextOptimizationMetrics } from '../context/types.js';
 
 export interface WorkflowEngineOptions {
@@ -74,16 +75,7 @@ export class WorkflowEngine {
     this.logger = new EventLogger(opts.paths.eventsFile);
     this.gate   = opts.approvalGate ?? new ApprovalGate();
     this.contextPipeline = opts.contextPipeline ?? new ContextPipelineImpl(opts.config, opts.provider);
-    this.aggregateOptimizationMetrics = {
-      originalTokens: 0,
-      optimizedTokens: 0,
-      savedTokens: 0,
-      savingsPercent: 0,
-      cacheHits: 0,
-      cacheMisses: 0,
-      providerCalls: 0,
-      fallbacks: 0,
-    };
+    this.aggregateOptimizationMetrics = createEmptyOptimizationMetrics();
   }
 
   async run(): Promise<RunState> {
@@ -281,40 +273,58 @@ export class WorkflowEngine {
   }
 
   private accumulateOptimizationMetrics(metrics: ContextOptimizationMetrics): void {
-    this.aggregateOptimizationMetrics.originalTokens += metrics.originalTokens;
-    this.aggregateOptimizationMetrics.optimizedTokens += metrics.optimizedTokens;
-    this.aggregateOptimizationMetrics.savedTokens += metrics.savedTokens;
+    this.aggregateOptimizationMetrics.sourceTokens += metrics.sourceTokens;
+    this.aggregateOptimizationMetrics.deliveredTokens += metrics.deliveredTokens;
+    this.aggregateOptimizationMetrics.grossTokensSaved += metrics.grossTokensSaved;
+    this.aggregateOptimizationMetrics.compressionInputTokens += metrics.compressionInputTokens;
+    this.aggregateOptimizationMetrics.compressionOutputTokens += metrics.compressionOutputTokens;
+    this.aggregateOptimizationMetrics.validationInputTokens += metrics.validationInputTokens;
+    this.aggregateOptimizationMetrics.validationOutputTokens += metrics.validationOutputTokens;
+    this.aggregateOptimizationMetrics.optimizationOverheadTokens += metrics.optimizationOverheadTokens;
+    this.aggregateOptimizationMetrics.netTokensSaved += metrics.netTokensSaved;
     this.aggregateOptimizationMetrics.cacheHits += metrics.cacheHits;
     this.aggregateOptimizationMetrics.cacheMisses += metrics.cacheMisses;
     this.aggregateOptimizationMetrics.providerCalls += metrics.providerCalls;
     this.aggregateOptimizationMetrics.fallbacks += metrics.fallbacks;
+    this.aggregateOptimizationMetrics.measurementBasis = mergeMeasurementBasis(
+      this.aggregateOptimizationMetrics.measurementBasis,
+      metrics.measurementBasis
+    );
+    this.aggregateOptimizationMetrics.breakEvenUses = Math.ceil(
+      this.aggregateOptimizationMetrics.optimizationOverheadTokens /
+      Math.max(this.aggregateOptimizationMetrics.grossTokensSaved, 1)
+    );
+    this.aggregateOptimizationMetrics.originalTokens = this.aggregateOptimizationMetrics.sourceTokens;
+    this.aggregateOptimizationMetrics.optimizedTokens = this.aggregateOptimizationMetrics.deliveredTokens;
+    this.aggregateOptimizationMetrics.savedTokens = this.aggregateOptimizationMetrics.grossTokensSaved;
+    this.aggregateOptimizationMetrics.savingsPercent = this.aggregateOptimizationMetrics.sourceTokens > 0
+      ? (this.aggregateOptimizationMetrics.grossTokensSaved / this.aggregateOptimizationMetrics.sourceTokens) * 100
+      : 0;
+    this.aggregateOptimizationMetrics.netSavingsPercent = this.aggregateOptimizationMetrics.sourceTokens > 0
+      ? (this.aggregateOptimizationMetrics.netTokensSaved / this.aggregateOptimizationMetrics.sourceTokens) * 100
+      : 0;
   }
 
   private printOptimizationSummary(): void {
-    const totalOriginal = this.aggregateOptimizationMetrics.originalTokens;
+    const totalOriginal = this.aggregateOptimizationMetrics.sourceTokens;
     if (totalOriginal === 0) {
       return;
     }
 
-    const totalOptimized = this.aggregateOptimizationMetrics.optimizedTokens;
-    const saved = totalOriginal - totalOptimized;
-    const savingsPercent = totalOriginal > 0 ? (saved / totalOriginal) * 100 : 0;
-    const pctStr = savingsPercent.toFixed(1);
+    const totalOptimized = this.aggregateOptimizationMetrics.deliveredTokens;
+    const saved = this.aggregateOptimizationMetrics.grossTokensSaved;
+    const netSaved = this.aggregateOptimizationMetrics.netTokensSaved;
+    const netPctStr = this.aggregateOptimizationMetrics.netSavingsPercent.toFixed(1);
     const hitStr = this.aggregateOptimizationMetrics.cacheHits > 0 ? ' (Cache Hit)' : '';
 
     if (this.opts.reporter) {
-      this.opts.reporter.contextOptimizationStats({
-        originalTokens: totalOriginal,
-        optimizedTokens: totalOptimized,
-        savedTokens: saved,
-        savingsPercent,
-        cacheHits: this.aggregateOptimizationMetrics.cacheHits,
-        cacheMisses: this.aggregateOptimizationMetrics.cacheMisses,
-        providerCalls: this.aggregateOptimizationMetrics.providerCalls,
-        fallbacks: this.aggregateOptimizationMetrics.fallbacks,
-      });
+      this.opts.reporter.contextOptimizationStats(this.aggregateOptimizationMetrics);
     } else {
-      console.log(`  ⚡ Context Optimized: ${totalOriginal} → ${totalOptimized} tokens (saved ${pctStr}%)${hitStr}`);
+      console.log(
+        `  ⚡ Context Optimized: ${totalOriginal} → ${totalOptimized} tokens ` +
+        `(gross ${saved}, overhead ${this.aggregateOptimizationMetrics.optimizationOverheadTokens}, ` +
+        `net ${netSaved}, ${netPctStr}%) [${this.aggregateOptimizationMetrics.measurementBasis}]${hitStr}`
+      );
     }
   }
 
@@ -340,6 +350,14 @@ export class WorkflowEngine {
     const started_at = new Date().toISOString();
     const attempt = state.attempt + 1;
 
+    const { contextFiles, inputHashes, metrics, delivery } = await this.contextPipeline.prepare({
+      stage,
+      runId: state.run_id,
+      attempt,
+      cwd: this.opts.cwd,
+      runDir: this.opts.paths.runDir,
+    });
+
     const systemPrompt = buildSystemPrompt({
       stage,
       agentName: STAGE_TO_AGENT[stage],
@@ -350,19 +368,11 @@ export class WorkflowEngine {
       config: this.opts.config,
       previousPlan: options?.previousPlan,
       planUpdateNotes: options?.planUpdateNotes,
+      delivery,
     });
     const userMessage  = buildUserMessage(stage, task, attempt, options);
 
     this.logger.log('agent_call_start', { run_id: state.run_id, stage, attempt: state.attempt + 1 });
-
-    // Prepare optimized context files
-    const { contextFiles, inputHashes, metrics } = await this.contextPipeline.prepare({
-      stage,
-      runId: state.run_id,
-      attempt,
-      cwd: this.opts.cwd,
-      runDir: this.opts.paths.runDir,
-    });
 
     this.logger.log('context_optimization', {
       run_id: state.run_id,
@@ -517,6 +527,7 @@ interface SystemPromptContext {
   config: HarnessConfig;
   previousPlan?: string;
   planUpdateNotes?: string;
+  delivery?: PreparedContextDelivery[];
 }
 
 function buildSystemPrompt(ctx: SystemPromptContext): string {
@@ -525,6 +536,11 @@ function buildSystemPrompt(ctx: SystemPromptContext): string {
   const outputPath = path.join(runDir, artifactName);
   const globalRulesPath = path.join(cwd, '.codex', 'global-rules.md');
   const agentsMdPath = path.join(cwd, 'AGENTS.md');
+  const attachedSources = new Set(
+    (ctx.delivery ?? [])
+      .filter((item) => item.strategy === 'attached')
+      .map((item) => path.resolve(item.sourcePath))
+  );
 
   const inputArtifacts: string[] = [];
   if (stage === 'implementing') {
@@ -540,6 +556,19 @@ function buildSystemPrompt(ctx: SystemPromptContext): string {
     inputArtifacts.push(path.join(runDir, 'test-results.md'));
   }
 
+  const requiredReading = [globalRulesPath, agentsMdPath]
+    .filter((p) => !attachedSources.has(path.resolve(p)));
+  const requiredInputArtifacts = inputArtifacts
+    .filter((p) => !attachedSources.has(path.resolve(p)));
+
+  const attachedContextNotice = attachedSources.size > 0
+    ? [
+        'Attached context:',
+        'The attached context is authoritative for this stage.',
+        'Do not reread its original source unless the attached context provides a recovery handle and exact source is required.',
+      ].join('\n')
+    : '';
+
   const basePrompt = [
     `You are the ${agentName} agent for ${HARNESS_NAME_WITH_VERSION}.`,
     '',
@@ -551,12 +580,13 @@ function buildSystemPrompt(ctx: SystemPromptContext): string {
     `- Run directory: ${runDir}`,
     `- Expected output artifact: ${outputPath}`,
     '',
-    'Required reading:',
-    `- ${globalRulesPath}`,
-    agentsMdPath ? `- ${agentsMdPath}` : '',
+    attachedContextNotice,
+    requiredReading.length > 0
+      ? 'Required reading:\n' + requiredReading.map((p) => `- ${p}`).join('\n')
+      : '',
     '',
-    inputArtifacts.length > 0
-      ? 'Required input artifacts:\n' + inputArtifacts.map((p) => `- ${p}`).join('\n')
+    requiredInputArtifacts.length > 0
+      ? 'Required input artifacts:\n' + requiredInputArtifacts.map((p) => `- ${p}`).join('\n')
       : '',
     '',
     'Return your stage artifact as the final Markdown response. The harness will write it to the run directory.',
@@ -661,4 +691,44 @@ Please update the plan to incorporate these changes/clarifications. Maintain the
     default:
       return `Task: ${task}\n\nAttempt: ${attempt}`;
   }
+}
+
+function createEmptyOptimizationMetrics(): ContextOptimizationMetrics {
+  return {
+    sourceTokens: 0,
+    deliveredTokens: 0,
+    grossTokensSaved: 0,
+    compressionInputTokens: 0,
+    compressionOutputTokens: 0,
+    validationInputTokens: 0,
+    validationOutputTokens: 0,
+    optimizationOverheadTokens: 0,
+    netTokensSaved: 0,
+    netSavingsPercent: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    providerCalls: 0,
+    fallbacks: 0,
+    measurementBasis: 'tokenizer',
+    breakEvenUses: 0,
+    originalTokens: 0,
+    optimizedTokens: 0,
+    savedTokens: 0,
+    savingsPercent: 0,
+  };
+}
+
+function mergeMeasurementBasis(
+  current: ContextOptimizationMetrics['measurementBasis'],
+  next: ContextOptimizationMetrics['measurementBasis']
+): ContextOptimizationMetrics['measurementBasis'] {
+  if (current === 'estimate' || next === 'estimate') {
+    return 'estimate';
+  }
+
+  if (current === 'provider_reported' || next === 'provider_reported') {
+    return 'provider_reported';
+  }
+
+  return 'tokenizer';
 }

@@ -94,6 +94,38 @@ describe('CodexProvider', () => {
     );
   });
 
+  it('serializes each attached context file once', async () => {
+    let prompt = '';
+    spawnMock.mockImplementation((_command: string, args: string[]) => {
+      const outputPath = args[args.indexOf('--output-last-message') + 1];
+      fs.writeFileSync(outputPath, 'Ready.', 'utf8');
+      const child = createChildProcess({ exitCode: 0 });
+      child.stdin.end = vi.fn((data?: string) => {
+        prompt = String(data ?? '');
+        setImmediate(() => {
+          fs.writeFileSync(outputPath, 'Ready.', 'utf8');
+          child.stdout.push(null);
+          child.stderr.push(null);
+          setImmediate(() => {
+            const closeCall = child.on.mock.calls.find(([event]) => event === 'close');
+            const closeHandler = closeCall?.[1] as ((code: number | null, signal: NodeJS.Signals | null) => void) | undefined;
+            closeHandler?.(0, null);
+          });
+        });
+      });
+      return child;
+    });
+
+    const provider = new CodexProvider({ cwd: process.cwd() });
+    await provider.execute({
+      ...makeRequest(),
+      contextFiles: [{ path: '/tmp/plan.md', content: '## Plan\n\nAttached once.' }],
+    });
+
+    expect(prompt.match(/Path: \/tmp\/plan\.md/g)).toHaveLength(1);
+    expect(prompt.match(/Attached once\./g)).toHaveLength(1);
+  });
+
   it('returns blocked when Codex reports an authentication failure', async () => {
     spawnMock.mockImplementation(() =>
       createChildProcess({

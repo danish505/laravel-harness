@@ -14,6 +14,11 @@ export interface CompressionResult {
   originalTokens: number;
   compressedTokens: number;
   diagnostics: string[];
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    measurementBasis: 'provider_reported' | 'estimate';
+  };
 }
 
 export interface CompressionProvider {

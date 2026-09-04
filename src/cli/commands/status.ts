@@ -30,23 +30,33 @@ export function statusCommand(runId: string, cwd: string): void {
       const optEvents = events.filter((e) => e.type === 'context_optimization');
       if (optEvents.length > 0) {
         console.log(`  Context Optimization:`);
-        let totalSaved = 0;
-        let totalOriginal = 0;
+        let totalGrossSaved = 0;
+        let totalNetSaved = 0;
+        let totalSource = 0;
+        let totalDelivered = 0;
+        let totalOverhead = 0;
         let totalFallbacks = 0;
         let totalHits = 0;
         let totalMisses = 0;
 
         for (const e of optEvents) {
-          totalSaved += (e.savedTokens as number) || 0;
-          totalOriginal += (e.originalTokens as number) || 0;
+          totalGrossSaved += ((e.grossTokensSaved ?? e.savedTokens) as number) || 0;
+          totalNetSaved += ((e.netTokensSaved ?? e.savedTokens) as number) || 0;
+          totalSource += ((e.sourceTokens ?? e.originalTokens) as number) || 0;
+          totalDelivered += ((e.deliveredTokens ?? e.optimizedTokens) as number) || 0;
+          totalOverhead += (e.optimizationOverheadTokens as number) || 0;
           totalFallbacks += (e.fallbacks as number) || 0;
           totalHits += (e.cacheHits as number) || 0;
           totalMisses += (e.cacheMisses as number) || 0;
         }
-        const savingsPct = totalOriginal > 0 ? ((totalSaved / totalOriginal) * 100).toFixed(1) : '0.0';
-        console.log(`    Original Tokens: ${totalOriginal}`);
-        console.log(`    Saved Tokens   : ${totalSaved} (${savingsPct}%)`);
-        console.log(`    Cache Hits     : ${totalHits} / Misses: ${totalMisses}`);
+        const grossPct = totalSource > 0 ? ((totalGrossSaved / totalSource) * 100).toFixed(1) : '0.0';
+        const netPct = totalSource > 0 ? ((totalNetSaved / totalSource) * 100).toFixed(1) : '0.0';
+        console.log(`    Source Tokens   : ${totalSource}`);
+        console.log(`    Delivered Tokens: ${totalDelivered}`);
+        console.log(`    Gross Reduction : ${totalGrossSaved} (${grossPct}%)`);
+        console.log(`    Opt. Overhead   : ${totalOverhead}`);
+        console.log(`    Net Savings     : ${totalNetSaved} (${netPct}%)`);
+        console.log(`    Cache Hits      : ${totalHits} / Misses: ${totalMisses}`);
         if (totalFallbacks > 0) {
           console.log(`    Fallbacks      : ${totalFallbacks} (Validation failure/outages)`);
         }

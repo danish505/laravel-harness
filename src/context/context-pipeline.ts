@@ -1,18 +1,34 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { HarnessConfig, Stage, ContextFile, AgentProvider } from '../types.js';
-import type { ContextOptimizationMetrics, ContextDocument } from './types.js';
+import type { ContextOptimizationMetrics, ContextDocument, ContextOptimizationMeasurementBasis } from './types.js';
 import { ContextScanner } from './context-scanner.js';
 import { ContextPolicyEngine } from './context-policy-engine.js';
 import { TokenCounter } from '../tokenization/token-counter.js';
 import { NativeCompressionProvider } from '../compression/native-compression-provider.js';
 import { ValidationPipeline } from '../validation/validation-pipeline.js';
+import type { ValidationResult } from '../validation/validation-pipeline.js';
 import { ContextCache } from '../cache/context-cache.js';
 import { ProtectedSpanExtractor } from '../compression/protected-span-extractor.js';
 import { ContextRecoveryRegistry } from './context-recovery-registry.js';
 import { SemanticGrader } from '../validation/semantic-grader.js';
 import { ContextDeduplicator } from './context-deduplicator.js';
 import * as crypto from 'crypto';
+
+export interface PreparedContextDelivery {
+  sourcePath: string;
+  strategy: 'attached' | 'path_reference';
+  optimized: boolean;
+  recoveryHandle?: string;
+}
+
+export interface PreparedContext {
+  files: ContextFile[];
+  contextFiles: ContextFile[];
+  inputHashes: Record<string, string>;
+  metrics: ContextOptimizationMetrics;
+  delivery: PreparedContextDelivery[];
+}
 
 export interface ContextPipeline {
   prepare(input: {
@@ -21,11 +37,7 @@ export interface ContextPipeline {
     attempt: number;
     cwd: string;
     runDir: string;
-  }): Promise<{
-    contextFiles: ContextFile[];
-    inputHashes: Record<string, string>;
-    metrics: ContextOptimizationMetrics;
-  }>;
+  }): Promise<PreparedContext>;
 }
 
 export class ContextPipelineImpl implements ContextPipeline {
@@ -49,27 +61,15 @@ export class ContextPipelineImpl implements ContextPipeline {
     attempt: number;
     cwd: string;
     runDir: string;
-  }): Promise<{
-    contextFiles: ContextFile[];
-    inputHashes: Record<string, string>;
-    metrics: ContextOptimizationMetrics;
-  }> {
+  }): Promise<PreparedContext> {
     const { stage, runId, attempt, cwd, runDir } = input;
     const optConfig = this.config.context_optimization;
 
-    const metrics: ContextOptimizationMetrics = {
-      originalTokens: 0,
-      optimizedTokens: 0,
-      savedTokens: 0,
-      savingsPercent: 0,
-      cacheHits: 0,
-      cacheMisses: 0,
-      providerCalls: 0,
-      fallbacks: 0,
-    };
+    const metrics = createEmptyOptimizationMetrics();
 
     const contextFiles: ContextFile[] = [];
     const inputHashes: Record<string, string> = {};
+    const delivery: PreparedContextDelivery[] = [];
 
     // 1. Identify context files for the current stage
     const candidatePaths: string[] = [];
@@ -94,7 +94,7 @@ export class ContextPipelineImpl implements ContextPipeline {
     }
 
     if (candidatePaths.length === 0) {
-      return { contextFiles, inputHashes, metrics };
+      return { files: contextFiles, contextFiles, inputHashes, metrics, delivery };
     }
 
     const scanner = new ContextScanner(cwd);
@@ -122,10 +122,12 @@ export class ContextPipelineImpl implements ContextPipeline {
     const agentConfig = this.config.agents[agentName as keyof HarnessConfig['agents']];
     const budget = agentConfig?.context_budget;
     const exceedsBudget = !!(budget && totalOriginalTokens > budget);
+    const deduplicator = new ContextDeduplicator();
 
     for (const doc of documents) {
       inputHashes[doc.relativePath] = doc.hash;
       const originalTokens = docTokens.get(doc.hash) || TokenCounter.countTokens(doc.content);
+      metrics.sourceTokens += originalTokens;
       metrics.originalTokens += originalTokens;
 
       // Check if optimization is enabled and applicable
@@ -147,12 +149,16 @@ export class ContextPipelineImpl implements ContextPipeline {
         treatment === 'exclude' ||
         originalTokens < optConfig.minimum_tokens
       ) {
-        // Pass-through verbatim
+        const finalContent = deduplicator.deduplicateDocument(doc.content);
         contextFiles.push({
           path: doc.path,
-          content: doc.content,
+          content: finalContent,
         });
-        metrics.optimizedTokens += originalTokens;
+        delivery.push({
+          sourcePath: doc.path,
+          strategy: 'attached',
+          optimized: finalContent !== doc.content,
+        });
         continue;
       }
 
@@ -172,11 +178,35 @@ export class ContextPipelineImpl implements ContextPipeline {
       if (optConfig.cache_enabled) {
         const cached = this.cache.get(cacheKey);
         if (cached) {
-          finalContent = cached.compressedContent;
-          finalTokens = cached.compressedTokens;
-          metrics.cacheHits++;
-          usedCache = true;
-          this.recoveryRegistry.register(crypto.createHash('sha256').update(finalContent).digest('hex'), doc.path);
+          const snapshot = deduplicator.snapshot();
+          const deduplicatedContent = deduplicator.deduplicateDocument(cached.compressedContent);
+          const valResult = await ValidationPipeline.validateAsync(
+            doc,
+            deduplicatedContent,
+            optConfig.minimum_savings_percent,
+            optConfig.semantic_validation,
+            this.grader
+          );
+          applyValidationUsage(metrics, valResult);
+
+          if (valResult.valid) {
+            finalContent = deduplicatedContent;
+            finalTokens = TokenCounter.countTokens(finalContent);
+            metrics.cacheHits++;
+            usedCache = true;
+            this.recoveryRegistry.register(crypto.createHash('sha256').update(finalContent).digest('hex'), doc.path);
+          } else if (optConfig.fail_open) {
+            deduplicator.restore(snapshot);
+            metrics.fallbacks++;
+            finalContent = doc.content;
+            finalTokens = originalTokens;
+            usedCache = true;
+          } else {
+            deduplicator.restore(snapshot);
+            throw new Error(
+              `Cached context optimization validation failed for ${doc.relativePath}: ${valResult.errors.join(', ')}`
+            );
+          }
         }
       }
 
@@ -192,19 +222,28 @@ export class ContextPipelineImpl implements ContextPipeline {
           protectedSpans,
         });
 
+        if (compResult.usage) {
+          metrics.compressionInputTokens += compResult.usage.inputTokens;
+          metrics.compressionOutputTokens += compResult.usage.outputTokens;
+          metrics.measurementBasis = mergeMeasurementBasis(metrics.measurementBasis, compResult.usage.measurementBasis);
+        }
+
         if (compResult.status === 'compressed') {
-          // Validate
+          const snapshot = deduplicator.snapshot();
+          const candidateContent = deduplicator.deduplicateDocument(compResult.content);
+          const candidateTokens = TokenCounter.countTokens(candidateContent);
           const valResult = await ValidationPipeline.validateAsync(
             doc,
-            compResult.content,
+            candidateContent,
             optConfig.minimum_savings_percent,
             optConfig.semantic_validation,
             this.grader
           );
+          applyValidationUsage(metrics, valResult);
 
           if (valResult.valid) {
-            finalContent = compResult.content;
-            finalTokens = compResult.compressedTokens;
+            finalContent = candidateContent;
+            finalTokens = candidateTokens;
             this.recoveryRegistry.register(crypto.createHash('sha256').update(finalContent).digest('hex'), doc.path);
 
             // Save to Cache
@@ -224,7 +263,7 @@ export class ContextPipelineImpl implements ContextPipeline {
               );
             }
           } else {
-            // Validation failed, record fallback
+            deduplicator.restore(snapshot);
             metrics.fallbacks++;
             if (optConfig.fail_open) {
               finalContent = doc.content;
@@ -251,25 +290,94 @@ export class ContextPipelineImpl implements ContextPipeline {
         path: doc.path,
         content: finalContent,
       });
-      metrics.optimizedTokens += finalTokens;
+      delivery.push({
+        sourcePath: doc.path,
+        strategy: 'attached',
+        optimized: finalContent !== doc.content,
+      });
     }
 
-    metrics.savedTokens = metrics.originalTokens - metrics.optimizedTokens;
-    metrics.savingsPercent = metrics.originalTokens > 0 
-      ? (metrics.savedTokens / metrics.originalTokens) * 100 
+    metrics.deliveredTokens = contextFiles.reduce(
+      (total, file) => total + TokenCounter.countTokens(file.content),
+      0
+    );
+    metrics.grossTokensSaved = metrics.sourceTokens - metrics.deliveredTokens;
+    metrics.optimizationOverheadTokens =
+      metrics.compressionInputTokens +
+      metrics.compressionOutputTokens +
+      metrics.validationInputTokens +
+      metrics.validationOutputTokens;
+    metrics.netTokensSaved = metrics.grossTokensSaved - metrics.optimizationOverheadTokens;
+    metrics.netSavingsPercent = metrics.sourceTokens > 0
+      ? (metrics.netTokensSaved / metrics.sourceTokens) * 100
+      : 0;
+    metrics.breakEvenUses = Math.ceil(
+      metrics.optimizationOverheadTokens / Math.max(metrics.grossTokensSaved, 1)
+    );
+    metrics.originalTokens = metrics.sourceTokens;
+    metrics.optimizedTokens = metrics.deliveredTokens;
+    metrics.savedTokens = metrics.grossTokensSaved;
+    metrics.savingsPercent = metrics.sourceTokens > 0 
+      ? (metrics.grossTokensSaved / metrics.sourceTokens) * 100 
       : 0;
 
-    // Deduplicate duplicate blocks/instructions across prepared context files
-    const deduplicator = new ContextDeduplicator();
-    const deduplicatedFiles = contextFiles.map((file) => ({
-      path: file.path,
-      content: deduplicator.deduplicateDocument(file.content),
-    }));
-
     return {
-      contextFiles: deduplicatedFiles,
+      files: contextFiles,
+      contextFiles,
       inputHashes,
       metrics,
+      delivery,
     };
   }
+}
+
+function createEmptyOptimizationMetrics(): ContextOptimizationMetrics {
+  return {
+    sourceTokens: 0,
+    deliveredTokens: 0,
+    grossTokensSaved: 0,
+    compressionInputTokens: 0,
+    compressionOutputTokens: 0,
+    validationInputTokens: 0,
+    validationOutputTokens: 0,
+    optimizationOverheadTokens: 0,
+    netTokensSaved: 0,
+    netSavingsPercent: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    providerCalls: 0,
+    fallbacks: 0,
+    measurementBasis: 'tokenizer',
+    breakEvenUses: 0,
+    originalTokens: 0,
+    optimizedTokens: 0,
+    savedTokens: 0,
+    savingsPercent: 0,
+  };
+}
+
+function applyValidationUsage(metrics: ContextOptimizationMetrics, result: ValidationResult): void {
+  metrics.providerCalls += result.providerCalls;
+  if (!result.usage) {
+    return;
+  }
+
+  metrics.validationInputTokens += result.usage.inputTokens;
+  metrics.validationOutputTokens += result.usage.outputTokens;
+  metrics.measurementBasis = mergeMeasurementBasis(metrics.measurementBasis, result.usage.measurementBasis);
+}
+
+function mergeMeasurementBasis(
+  current: ContextOptimizationMeasurementBasis,
+  next: ContextOptimizationMeasurementBasis
+): ContextOptimizationMeasurementBasis {
+  if (current === 'estimate' || next === 'estimate') {
+    return 'estimate';
+  }
+
+  if (current === 'provider_reported' || next === 'provider_reported') {
+    return 'provider_reported';
+  }
+
+  return 'tokenizer';
 }

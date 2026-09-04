@@ -41,12 +41,14 @@ export class ProgressReporter {
   }
 
   contextOptimizationStats(stats: ContextOptimizationMetrics): void {
-    const savingsPctStr = stats.savingsPercent.toFixed(1);
+    const netSavingsPctStr = stats.netSavingsPercent.toFixed(1);
     const hitIndicator = stats.cacheHits > 0 ? ` \x1b[32m(Cache Hit)\x1b[0m` : '';
     const fallbackIndicator = stats.fallbacks > 0 ? ` \x1b[31m(Fallback: ${stats.fallbacks})\x1b[0m` : '';
     
     this.spinner.printSubLine(
-      `  \x1b[33m⚡\x1b[0m Context Optimized: \x1b[2m${stats.originalTokens} → ${stats.optimizedTokens} tokens (saved ${savingsPctStr}%)\x1b[0m${hitIndicator}${fallbackIndicator}`
+      `  \x1b[33m⚡\x1b[0m Context Optimized: \x1b[2m${stats.sourceTokens} → ${stats.deliveredTokens} tokens ` +
+      `(gross ${stats.grossTokensSaved}, overhead ${stats.optimizationOverheadTokens}, ` +
+      `net ${stats.netTokensSaved}, ${netSavingsPctStr}%) [${stats.measurementBasis}]\x1b[0m${hitIndicator}${fallbackIndicator}`
     );
   }
 
